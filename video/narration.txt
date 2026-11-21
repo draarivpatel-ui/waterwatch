@@ -1,0 +1,9 @@
+WaterWatch is an offline workbench that screens drinking water lab results, one tap sample at a time. It is a plain web page with no dependencies, and its Content Security Policy forbids network connections entirely. All 367 tests pass, and 40 headless browser checks pass at two viewports with zero console errors.
+
+Open the School tap preset, a synthetic first draw at an older elementary school. Lead reads 24.6 parts per billion, above the 10 part action level, while the same fountain flushed reads 3.1. The report keeps both lead action levels as context, the current 10 and the legacy 15, and never calls either one a safety verdict.
+
+Now the Industrial corridor preset, a synthetic private well. No individual PFAS reading exceeds its benchmark, yet four contributions sum into a mixture Hazard Index of exactly 1.27, above the benchmark of 1. Beside the exact sum, the rule's one-significant-figure display reads 1, and the screen still uses the unrounded value.
+
+After the storm pairs a boil advisory with a microbial detection and nitrate at 13.6 milligrams per liter as nitrogen. The banner gives the alternate-water guidance, bottled water or an approved source, because boiling kills germs but does not remove chemicals. Slide the evaporation control to 20 percent, and 13.6 becomes 17, since what stays behind only grows more concentrated.
+
+The print view lays out a one-page safety sheet in English and Spanish for the selected tap. The downloads section writes an audit CSV and a fingerprinted JSON bundle covering every loaded tap. The PFAS benchmarks come from the 2024 EPA rule snapshot, and the screening math uses exact decimal arithmetic. A screening result is not official advice; for that, contact your water utility or local health department. WaterWatch. Know what is in your tap.
