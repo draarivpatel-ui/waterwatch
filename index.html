@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WaterWatch</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#report">Skip to the screen report</a>
+
+<svg class="marks" aria-hidden="true" focusable="false" width="0" height="0">
+  <defs>
+    <symbol id="mark-above" viewBox="0 0 16 16">
+      <path d="M8 2.4 14.6 13.4H1.4Z" fill="none" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M8 6.4v3.4" stroke-width="1.6" stroke-linecap="round"/>
+      <circle cx="8" cy="11.6" r="0.9" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="mark-at" viewBox="0 0 16 16">
+      <path d="M8 2.4 13.6 8 8 13.6 2.4 8Z" fill="none" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M5.6 8h4.8" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="mark-below" viewBox="0 0 16 16">
+      <path d="m3.2 8.4 3.2 3.2 6.4-6.8" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="mark-missing" viewBox="0 0 16 16">
+      <circle cx="8" cy="8" r="5.6" fill="none" stroke-width="1.6"/>
+      <path d="M5.4 8h5.2" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="mark-scope" viewBox="0 0 16 16">
+      <circle cx="8" cy="8" r="5.6" fill="none" stroke-width="1.6"/>
+      <circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="mark-info" viewBox="0 0 16 16">
+      <circle cx="8" cy="8" r="6" fill="none" stroke-width="1.6"/>
+      <path d="M8 7.4v4" stroke-width="1.6" stroke-linecap="round"/>
+      <circle cx="8" cy="4.9" r="0.9" fill="currentColor" stroke="none"/>
+    </symbol>
+  </defs>
+</svg>
+
+<header class="masthead">
+  <h1>WaterWatch</h1>
+  <div class="masthead-side">
+    <p class="offline-pill"><span class="offline-dot" aria-hidden="true"></span>Offline, nothing leaves this device</p>
+    <nav aria-label="Sections">
+      <a href="#sample">Samples</a>
+      <a href="#report">Report</a>
+      <a href="#models">Models</a>
+      <a href="#exports">Downloads</a>
+      <a href="#sources">Sources</a>
+    </nav>
+  </div>
+</header>
+
+<div id="preset-strip" class="preset-strip" role="group" aria-label="Synthetic presets"></div>
+
+<div id="mobile-action" class="mobile-action" hidden></div>
+
+<div class="substrate">
+  <aside id="sample" class="rail" aria-label="Sample entry">
+    <section class="rail-block" aria-labelledby="source-h">
+      <h2 id="source-h">Sample source</h2>
+      <p id="source-note" class="rail-note"></p>
+      <label class="field-label" for="csv-input">CSV text</label>
+      <textarea id="csv-input" rows="9" spellcheck="false" autocomplete="off"
+        aria-describedby="csv-hint"></textarea>
+      <p id="csv-hint" class="hint">Editing the text marks the report stale until you apply it again.</p>
+      <div class="rail-actions">
+        <button type="button" id="apply">Apply CSV</button>
+        <label class="file-label">Upload .csv
+          <input type="file" id="file-input" accept=".csv,text/csv">
+        </label>
+      </div>
+      <div id="import-errors" class="errors" role="alert" hidden></div>
+    </section>
+
+    <section class="rail-block" aria-labelledby="taps-h">
+      <h2 id="taps-h">Taps</h2>
+      <p id="taps-empty" class="rail-note">No valid samples loaded.</p>
+      <ul id="tap-list" class="tap-list"></ul>
+    </section>
+
+    <section class="rail-block" aria-labelledby="keys-h">
+      <h2 id="keys-h">Keyboard</h2>
+      <label class="toggle">
+        <input type="checkbox" id="shortcut-toggle">
+        <span>Enable single keys: i opens the file picker, p prints the tap sheet.</span>
+      </label>
+    </section>
+  </aside>
+
+  <main id="main" class="main-panel">
+    <section id="report" class="panel" aria-labelledby="report-h" tabindex="-1">
+      <h2 id="report-h">Screen report</h2>
+      <p id="stale-note" class="stale" role="status" hidden>
+        The input changed since this report was applied. Apply the CSV to refresh it.
+      </p>
+      <div id="action" class="action" aria-live="polite"></div>
+      <div class="table-wrap">
+        <table id="results-table">
+          <caption id="results-caption"></caption>
+          <thead>
+            <tr>
+              <th scope="col">Contaminant</th>
+              <th scope="col" class="num">Measured</th>
+              <th scope="col">Reference</th>
+              <th scope="col">Finding</th>
+            </tr>
+          </thead>
+          <tbody id="results-body"></tbody>
+        </table>
+      </div>
+      <div id="report-notes" class="notes"></div>
+      <p id="print-row" class="print-row">
+        <button type="button" id="print-sheet-btn">Print tap safety sheet</button>
+        <span class="hint">One page, English and Spanish.</span>
+      </p>
+    </section>
+
+    <div id="models">
+      <section id="mixture" class="panel" aria-labelledby="mixture-h">
+        <h2 id="mixture-h">Hazard index</h2>
+        <div id="mixture-body"></div>
+      </section>
+
+      <section id="evaporation" class="panel" aria-labelledby="evap-h">
+        <h2 id="evap-h">Evaporation model</h2>
+        <div id="evap-body"></div>
+      </section>
+
+      <section id="flush" class="panel" aria-labelledby="flush-h">
+        <h2 id="flush-h">First-draw flush</h2>
+        <div id="flush-body"></div>
+      </section>
+
+      <section id="treatment" class="panel" aria-labelledby="treatment-h">
+        <h2 id="treatment-h">Filter comparison</h2>
+        <div id="treatment-body"></div>
+      </section>
+    </div>
+
+    <section id="exports" class="panel" aria-labelledby="exports-h">
+      <h2 id="exports-h">Downloads</h2>
+      <p class="rail-note">Exports cover every loaded tap, not only the selected one.</p>
+      <div class="rail-actions">
+        <button type="button" id="download-csv">Audit CSV</button>
+        <button type="button" id="download-bundle">Fingerprinted JSON bundle</button>
+      </div>
+      <p id="fingerprint" class="fingerprint" hidden></p>
+      <p id="export-error" class="errors-inline" role="alert" hidden></p>
+    </section>
+
+    <section id="sources" class="panel" aria-labelledby="sources-h">
+      <h2 id="sources-h">Sources</h2>
+      <p class="rail-note">
+        Screening context only. One sample from one tap is never a compliance
+        determination, a 90th-percentile result, or a potability clearance. The
+        2024 PFAS rule judges running annual averages and applies
+        significant-figure rounding; this screen shows that rounding as context
+        and never rounds or discards a reading. EPA proposed changes in 2026;
+        this catalog is a 2024 snapshot, not a live regulatory feed.
+      </p>
+      <ul id="source-list" class="source-list"></ul>
+    </section>
+  </main>
+</div>
+
+<div id="print-sheet" class="print-sheet" aria-hidden="true"></div>
+
+<script type="module" src="src/app.js"></script>
+</body>
+</html>

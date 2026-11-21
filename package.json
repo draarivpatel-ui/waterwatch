@@ -1,0 +1,11 @@
+{
+  "name": "waterwatch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline single-tap water sample screening notebook.",
+  "scripts": {
+    "serve": "python3 -m http.server 8000 --bind 127.0.0.1",
+    "test": "node --test test/"
+  }
+}
