@@ -495,7 +495,7 @@ function renderMixture() {
   }
   body.append(el('p', {
     class: 'notes',
-    text: 'The index covers PFHxS, PFNA, GenX (HFPO-DA), and PFBS, and needs at least two measured constituents. PFBS alone is not an MCL.',
+    text: 'The index covers PFHxS, PFNA, GenX (HFPO-DA), and PFBS. The mixture benchmark needs at least two positive constituents; this screen still flags any summed index above 1. PFBS alone is not an MCL.',
   }));
 }
 
@@ -865,6 +865,13 @@ function actionText(action) {
   return ACTIONS[action] ?? ACTIONS.review;
 }
 
+const ADVISORY_BI = {
+  none: 'none / ninguno', boil: 'boil / hervir', 'do-not-drink': 'do-not-drink / no beber',
+  'do-not-use': 'do-not-use / no usar', unknown: 'unknown / desconocido',
+};
+const ECOLI_BI = { present: 'present / presente', absent: 'absent / ausente', unknown: 'unknown / desconocido' };
+const UNKNOWN_BI = { advisory: 'advisory / aviso', ecoli: 'E. coli / E. coli' };
+
 function renderPrintSheet(view) {
   const sheet = $('print-sheet');
   sheet.replaceChildren();
@@ -883,7 +890,7 @@ function renderPrintSheet(view) {
     el('h1', { text: 'WaterWatch' }),
     el('p', { class: 'ps-tap', text: `Tap / Grifo: ${sample.tap}` }),
     el('p', {
-      text: `Advisory / Aviso: ${sample.advisory}   |   E. coli: ${sample.ecoli}   |   Screened / Evaluado: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+      text: `Advisory / Aviso: ${ADVISORY_BI[sample.advisory] ?? sample.advisory}   |   E. coli: ${ECOLI_BI[sample.ecoli] ?? sample.ecoli}   |   Screened / Evaluado: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
     }),
     el('p', {
       text: state.synthetic
@@ -937,7 +944,7 @@ function renderPrintSheet(view) {
   }
   if (screen.unknowns.length) {
     sheet.append(el('p', {
-      text: `Unreported / No reportado: ${screen.unknowns.map(id => UNKNOWN_NAMES[id] ?? id).join(', ')}.`,
+      text: `Unreported / No reportado: ${screen.unknowns.map(id => UNKNOWN_BI[id] ?? UNKNOWN_NAMES[id] ?? id).join(', ')}.`,
     }));
   }
   sheet.append(el('p', {

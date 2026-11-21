@@ -100,7 +100,7 @@ function tokenize(text) {
         }
       } else {
         cell += ch;
-        if (ch === '\n') line += 1;
+        if (ch === '\n' || (ch === '\r' && text[i + 1] !== '\n')) line += 1;
       }
       continue;
     }

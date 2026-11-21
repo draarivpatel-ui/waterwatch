@@ -39,8 +39,9 @@ Node 18 or newer, no packages to install.
 - The 2024 PFAS rule judges quarterly monitoring by running annual average and
   applies significant-figure rounding. This screen shows rounding as context
   only and never rounds or discards a reading before comparing.
-- The Hazard Index term covers only PFHxS, PFNA, GenX, and PFBS. It needs at
-  least two measured constituents; PFBS alone is not an MCL, and unreported
+- The Hazard Index term covers only PFHxS, PFNA, GenX, and PFBS. The mixture
+  benchmark needs at least two positive constituents; the screen still flags
+  any summed index above 1, PFBS alone is not an MCL, and unreported
   constituents stay visible as unknowns.
 - The lead benchmark shown is the 10 ppb action level with its November 1, 2027
   compliance date; the legacy 15 ppb 90th-percentile system action level is

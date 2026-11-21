@@ -41,7 +41,7 @@ function roundSignificant(value, sig) {
   if (value === 0n) return { units: 0n, text: sig === 2 ? '0.0' : '0' };
   const step = 10n ** BigInt(Math.max(0, value.toString().length - sig));
   const rounded = (value + step / 2n) / step * step;
-  const places = Math.max(0, sig - (rounded.toString().length - scale));
+  const places = Math.min(12, Math.max(0, sig - (rounded.toString().length - scale)));
   const [whole, fraction = ''] = fixed(rounded).split('.');
   return {
     units: rounded,
@@ -61,9 +61,17 @@ function reading(value, label) {
   return text;
 }
 
-export function normalizeSample({ tap, advisory = 'unknown', ecoli = 'unknown', values = {} }) {
-  if (typeof tap !== 'string' || !tap.trim() || tap.trim().length > 100 ||
-      /[\p{Cc}\p{Cf}\p{Cs}]/u.test(tap.trim())) {
+export function normalizeSample(sample) {
+  if (typeof sample !== 'object' || sample === null) {
+    throw new TypeError('Each sample must be an object.');
+  }
+  const { tap, advisory = 'unknown', ecoli = 'unknown', values = {} } = sample;
+  const text = typeof tap === 'string' ? tap.trim() : '';
+  if (!text || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(text)) {
+    throw new RangeError('Tap name must contain 1 to 100 visible characters without controls.');
+  }
+  const name = text.replace(/[^\S ]+/g, ' ');
+  if ([...name].length > 100) {
     throw new RangeError('Tap name must contain 1 to 100 visible characters without controls.');
   }
   if (!advisories.has(advisory)) throw new RangeError('Unknown advisory type.');
@@ -75,7 +83,7 @@ export function normalizeSample({ tap, advisory = 'unknown', ecoli = 'unknown', 
     if (!CHEMICALS.some(({ id }) => id === key)) throw new RangeError('Unknown measurement field.');
   }
   return {
-    tap: tap.trim(),
+    tap: name,
     advisory,
     ecoli,
     values: Object.fromEntries(CHEMICALS.map(({ id, label }) =>
@@ -101,9 +109,8 @@ function hazardIndex(values) {
   const completeMixture = missing.length === 0 && positives >= 2;
   const rounded = completeMixture ? roundSignificant(total, 1) : null;
   return {
-    status: completeMixture ? exactStatus : missing.length ?
-      (positives >= 2 && exactStatus === 'above' ? 'above-lower-bound' : 'incomplete') :
-      'not-applicable',
+    status: exactStatus === 'above' ? (missing.length ? 'above-lower-bound' : 'above') :
+      completeMixture ? exactStatus : missing.length ? 'incomplete' : 'not-applicable',
     raw: missing.length === terms.length ? null : fixed(total),
     rounded: rounded?.text ?? null,
     roundedStatus: rounded ? status(rounded.units, one) : null,

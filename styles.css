@@ -846,6 +846,10 @@ input[type="range"] {
   display: none;
 }
 
+@page {
+  margin: 10mm;
+}
+
 @media print {
   body {
     background: #fff;

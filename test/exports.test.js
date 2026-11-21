@@ -135,6 +135,22 @@ test('empty or malformed report cannot be exported as an apparently valid audit'
   await assert.rejects(buildBundle([sample('')]), /Tap name/);
 });
 
+test('sparse sample arrays cannot smuggle unvalidated holes into either export', async () => {
+  const sparse = new Array(3);
+  sparse[1] = sample();
+  assert.throws(() => auditCsv(sparse), TypeError);
+  await assert.rejects(buildBundle(sparse), TypeError);
+  assert.throws(() => auditCsv(new Array(3)), TypeError);
+  await assert.rejects(buildBundle(new Array(3)), TypeError);
+});
+
+test('non-object samples fail with a clear type error in both exports', async () => {
+  for (const bad of [null, undefined, 42, 'x', true]) {
+    assert.throws(() => auditCsv([bad]), TypeError);
+    await assert.rejects(buildBundle([bad]), TypeError);
+  }
+});
+
 test('preset and unverified provenance survive download and are covered by the digest', async () => {
   const preset = await buildBundle([sample()], { source: 'synthetic' });
   const unverified = await buildBundle([sample()]);

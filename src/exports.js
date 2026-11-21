@@ -66,10 +66,12 @@ export function csvCell(value) {
 
 function snapshots(samples) {
   if (!Array.isArray(samples) || samples.length === 0) throw new RangeError('No samples to export.');
-  return samples.map(input => {
-    const sample = normalizeSample(input);
-    return { sample, screen: screenSample(sample) };
-  });
+  const out = [];
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = normalizeSample(samples[i]);
+    out.push({ sample, screen: screenSample(sample) });
+  }
+  return out;
 }
 
 function auditSource(source) {

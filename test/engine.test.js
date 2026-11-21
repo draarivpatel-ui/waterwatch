@@ -29,7 +29,8 @@ for (const [id, below, equal, above, kind, unit] of benchmarks) {
   test(`${id} above the benchmark is part of the boil conflict`, () => {
     const screened = screenSample(input({ [id]: above }, 'boil'));
     assert.equal(screened.action, 'co-occurrence');
-    assert.deepEqual(screened.chemicals, [id]);
+    const mixtureFlag = ['pfhxs', 'pfna', 'genx'].includes(id) ? ['hazard-index'] : [];
+    assert.deepEqual(screened.chemicals, [id, ...mixtureFlag]);
   });
 }
 
@@ -57,6 +58,14 @@ for (const id of ['pfhxs', 'pfna', 'genx']) {
   }
 }
 
+for (const id of ['pfoa', 'pfos']) {
+  test(`${id} rounding context stays inside the 12-fraction input grammar when the value allows it`, () => {
+    const row = result(id, '0.000000000001');
+    assert.equal(row.rounded, '0.000000000001');
+    assert.match(row.rounded, /^[0-9]{1,9}(?:\.[0-9]{1,12})?$/);
+  });
+}
+
 for (const [value, expected] of [[null, 'missing'], ['10.001', 'below'], ['14.999999999999', 'below'],
   ['15', 'at'], ['15.000000000001', 'above'], ['999999999.999999999999', 'above']]) {
   test(`legacy lead 15 ppb reports ${value ?? 'unreported'} as ${expected}`, () => {
@@ -79,13 +88,14 @@ for (const [values, exact, status, rounded, roundedStatus] of [
   [mixture('4', '4', '4', '600'), '1.5', 'above', '2', 'above'],
   [mixture('6', '5', '0', '0'), '1.1', 'above', '1', 'at'],
   [mixture('10', '0', '0', '0'), '1', 'not-applicable', null, null],
-  [mixture('0', '0', '0', '5000'), '2.5', 'not-applicable', null, null],
+  [mixture('0', '0', '0', '2000'), '1', 'not-applicable', null, null],
+  [mixture('0', '0', '0', '5000'), '2.5', 'above', null, null],
   [mixture('0', '0', '0', '0'), '0', 'not-applicable', null, null],
   [mixture('0', '0', '0', null), '0', 'incomplete', null, null],
   [mixture('4', '4', '0', null), '0.8', 'incomplete', null, null],
   [mixture('5', '5', '0', null), '1', 'incomplete', null, null],
   [mixture('6', '5', '0', null), '1.1', 'above-lower-bound', null, null],
-  [mixture('0', '0', null, '5000'), '2.5', 'incomplete', null, null],
+  [mixture('0', '0', null, '5000'), '2.5', 'above-lower-bound', null, null],
   [mixture(null, null, null, null), null, 'incomplete', null, null],
 ]) {
   test(`mixture ${JSON.stringify(values)} preserves exact ${exact} and eligibility`, () => {
@@ -110,6 +120,27 @@ test('mixture returns every quotient and denominators without including PFOA or 
 test('PFBS has no individual maximum contaminant level', () => {
   const row = result('pfbs', '999999999');
   assert.deepEqual([row.status, row.limit, row.rounded], ['no-limit', null, null]);
+});
+
+const MIXTURE_IDS = ['pfhxs', 'pfna', 'genx', 'pfbs'];
+const ALL_CHEMICAL_IDS = ['lead', 'copper', 'nitrate', 'arsenic', 'pfoa', 'pfos', 'pfhxs', 'pfna', 'genx', 'pfbs'];
+
+test('a lone PFBS exceedance still flags the summed index', () => {
+  const clean = Object.fromEntries(ALL_CHEMICAL_IDS.map(id => [id, '0']));
+  clean.pfbs = '5000';
+  const screened = screenSample(input(clean));
+  assert.equal(screened.mixture.status, 'above');
+  assert.equal(screened.action, 'chemical');
+  assert.deepEqual(screened.chemicals, ['hazard-index']);
+});
+
+test('a summed index above 1 flags regardless of missing terms or positive count', () => {
+  const withMissing = screenSample(input(mixture('0', '0', null, '5000')));
+  assert.equal(withMissing.mixture.status, 'above-lower-bound');
+  assert.equal(withMissing.action, 'chemical');
+  const singleMcl = screenSample(input({ ...Object.fromEntries(MIXTURE_IDS.map(id => [id, '0'])), pfhxs: '15' }));
+  assert.equal(singleMcl.mixture.status, 'above');
+  assert.deepEqual(singleMcl.chemicals, ['pfhxs', 'hazard-index']);
 });
 
 const complete = { lead: '0', copper: '20', nitrate: '1', arsenic: '1', pfoa: '0', pfos: '0',
@@ -160,9 +191,31 @@ for (const value of ['', '    ', 'X'.repeat(101), 'fake\nname', 'before\u202Eaft
   });
 }
 
+for (const [value, expected] of [
+  ['a\u00A0b', 'a b'], ['a\u2028b', 'a b'], ['a\u2029b', 'a b'],
+  ['a\u2003\u2003b', 'a b'], ['North\u00A0tap', 'North tap'], ['\u00A0\u00A0padded\u00A0\u00A0', 'padded'],
+]) {
+  test(`tap ${JSON.stringify(value)} stores ${JSON.stringify(expected)}`, () => {
+    assert.equal(normalizeSample({ tap: value }).tap, expected);
+  });
+}
+
+test('tap length counts code points, so astral characters are not double-billed', () => {
+  const emojiTap = `${'💧'.repeat(60)} tap`;
+  assert.equal(normalizeSample({ tap: emojiTap }).tap, emojiTap);
+  assert.throws(() => normalizeSample({ tap: '💧'.repeat(101) }), /Tap name/);
+});
+
 test('advisory and organism are closed input vocabularies', () => {
   assert.throws(() => normalizeSample(input({}, 'boil water')), /advisory/i);
   assert.throws(() => normalizeSample(input({}, 'none', '0')), /E\. coli/);
+});
+
+test('non-object samples fail closed with a type error', () => {
+  for (const bad of [null, undefined, 42, 'x', true]) {
+    assert.throws(() => normalizeSample(bad), TypeError);
+    assert.throws(() => screenSample(bad), TypeError);
+  }
 });
 
 test('prototype properties are not accepted as readings or mistaken for own data', () => {

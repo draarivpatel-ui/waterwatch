@@ -237,6 +237,19 @@ test('duplicates are detected after tap normalization', () => {
   rejects(csv(['tap,lead_ppb', 'Fountain,5', '  Fountain  ,6']), { row: 3 });
 });
 
+test('invisible-separator tap names collapse into real duplicates', () => {
+  for (const lookalike of ['a\u00a0b', 'a\u2028b', 'a\u2029b', 'a\u2003b']) {
+    rejects(csv(['tap,lead_ppb', 'a b,5', `${lookalike},6`]), { row: 3, field: 'tap' });
+  }
+});
+
+test('a line break inside a quoted cell still advances error line numbers', () => {
+  for (const sep of ['\r', '\n', '\r\n']) {
+    const error = rejects(`tap,lead_ppb\n"A${sep}B",1\nC,ND`);
+    assert.deepEqual(error.errors.map(item => item.row), [2, 4]);
+  }
+});
+
 test('ND is rejected with an explicit no-substitute instruction', () => {
   const error = rejects(csv(['tap,lead_ppb', 'A,ND']), { row: 2, field: 'lead_ppb' });
   assert.match(error.errors[0].message, /never substitute zero/);
