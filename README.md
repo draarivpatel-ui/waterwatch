@@ -9,6 +9,8 @@ Everything runs in the browser. There are no dependencies, no build step, and
 no network calls: the page's Content-Security-Policy forbids connections, and
 every computation happens in local JavaScript.
 
+**Live demo:** [https://aariv.me/waterwatch/](https://aariv.me/waterwatch/)
+
 ## Run it
 
 ```sh
