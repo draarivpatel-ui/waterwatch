@@ -372,6 +372,7 @@ export const SDG6_STRINGS = {
       withheld: 'withheld', 'no-need': 'none needed',
     },
     recommended: name => `Best modeled reach for this budget: ${name}.`,
+    reachShare: (reached, people) => `${reached} of ${people} people reached`,
     recPartial: 'partial cover only; some reported contaminants are not fully treated',
     recEconomics: 'economics only; no listed option covers the reported contaminants',
     coverage: (reached, people, pct) => `${reached} of ${people} people reached; ${pct}% of the community is still uncovered.`,
@@ -470,6 +471,7 @@ export const SDG6_STRINGS = {
       withheld: 'retenido', 'no-need': 'ninguna necesaria',
     },
     recommended: name => `Mejor alcance modelado para este presupuesto: ${name}.`,
+    reachShare: (reached, people) => `${reached} de ${people} personas alcanzadas`,
     recPartial: 'cobertura parcial; algunos contaminantes reportados no se tratan por completo',
     recEconomics: 'solo economía; ninguna opción listada cubre los contaminantes reportados',
     coverage: (reached, people, pct) => `${reached} de ${people} personas alcanzadas; ${pct}% de la comunidad sigue sin cobertura.`,
@@ -535,6 +537,36 @@ function fmtRatio4(value) {
   return Number(value.toPrecision(4)).toString();
 }
 
+// Inline mark from the page's own symbol sheet (index.html), never a fetched asset.
+function markIcon(id, cls = '') {
+  const svg = svgEl('svg', { class: `mark${cls ? ` ${cls}` : ''}`, 'aria-hidden': 'true', focusable: 'false' });
+  svg.append(svgEl('use', { href: `#${id}` }));
+  return svg;
+}
+
+const TONE_MARK = { good: 'mark-below', warn: 'mark-at', bad: 'mark-above', muted: 'mark-missing' };
+const FIT_MARK = { yes: 'mark-below', partial: 'mark-at', no: 'mark-above', withheld: 'mark-above', 'no-need': 'mark-missing' };
+
+// Legend swatch that reuses the chart's own dot classes.
+const DOT_CLASS = { yes: 'sdg6-dot-yes', partial: 'sdg6-dot-partial', no: 'sdg6-dot-no', withheld: 'sdg6-dot-no', 'no-need': 'sdg6-dot-none' };
+
+function svgDot(fit) {
+  const svg = svgEl('svg', { class: 'sdg6-swatch', viewBox: '0 0 14 14', 'aria-hidden': 'true', focusable: 'false' });
+  svg.append(svgEl('circle', { cx: 7, cy: 7, r: 5, class: `sdg6-dot ${DOT_CLASS[fit] ?? 'sdg6-dot-none'}` }));
+  return svg;
+}
+
+// Horizontal share meter drawn with SVG geometry, so the page CSP needs no inline styles.
+function shareMeter(share, label, cls) {
+  const pct = Math.min(100, Math.max(0, Number.isFinite(share) ? share * 100 : 0));
+  const svg = svgEl('svg', {
+    class: `sdg6-meter ${cls}`, viewBox: '0 0 100 6', preserveAspectRatio: 'none', role: 'img', 'aria-label': label,
+  });
+  svg.append(svgEl('rect', { x: 0, y: 0, width: 100, height: 6, class: 'sdg6-meter-track' }));
+  svg.append(svgEl('rect', { x: 0, y: 0, width: pct.toFixed(2), height: 6, class: 'sdg6-meter-fill' }));
+  return svg;
+}
+
 function chipBar(label, names, options, current, onPick) {
   const bar = el('div', { class: 'lab-chipbar', role: 'group', 'aria-label': label });
   bar.append(el('span', { class: 'lab-lang-label sdg6-chip-label', text: `${label}:` }));
@@ -551,13 +583,17 @@ function chipBar(label, names, options, current, onPick) {
 
 function indicatorCards(t, lang, i61, i63, i64) {
   const cards = el('div', { class: 'sdg6-cards' });
-  const card = (title, nodes) => el('div', { class: 'sdg6-card' }, [
+  const card = (title, tone, nodes) => el('div', { class: `sdg6-card sdg6-card-${tone}` }, [
     el('h4', { class: 'sdg6-card-h', text: title }),
     ...nodes,
   ]);
+  const level = (tone, text) => el('p', { class: `sdg6-level sdg6-${tone}` }, [markIcon(TONE_MARK[tone], 'sdg6-level-mark'), text]);
+  const tone61 = i61.level === 'safely-managed' ? 'good' : 'warn';
+  const tone63 = i63.band === 'none' ? 'good' : i63.band === 'single' ? 'warn' : 'bad';
+  const tone64 = ['high', 'extreme'].includes(i64.band) ? 'bad' : i64.band === 'medium-high' ? 'warn' : 'good';
   const freeCls = i61.free === 'free' ? 'sdg6-good' : i61.free === 'contaminated' ? 'sdg6-bad' : 'sdg6-muted';
-  cards.append(card(t.card61, [
-    el('p', { class: `sdg6-level ${i61.level === 'safely-managed' ? 'sdg6-good' : 'sdg6-warn'}`, text: t.level[i61.level] }),
+  cards.append(card(t.card61, tone61, [
+    level(tone61, t.level[i61.level]),
     el('p', { class: `sdg6-line ${freeCls}`, text: t.free[i61.free] }),
     i61.gap.length ? el('p', { class: 'sdg6-line sdg6-muted', text: `${t.gapLabel}: ${i61.gap.map(g => t.gap[g]).join('; ')}.` }) : null,
     el('p', {
@@ -565,8 +601,8 @@ function indicatorCards(t, lang, i61, i63, i64) {
       text: i61.needs.length ? t.needsLine(i61.needs.map(n => t.needNames[n])) : t.noNeeds,
     }),
   ]));
-  cards.append(card(t.card63, [
-    el('p', { class: `sdg6-level ${i63.band === 'none' ? 'sdg6-good' : i63.band === 'single' ? 'sdg6-warn' : 'sdg6-bad'}`, text: t.band63[i63.band] }),
+  cards.append(card(t.card63, tone63, [
+    level(tone63, t.band63[i63.band]),
     el('p', {
       class: 'sdg6-line sdg6-muted',
       text: i63.worst ? t.worst63(NEED_DISPLAY[i63.worst.id]?.[lang] ?? i63.worst.id, fmtRatio4(i63.worst.ratio)) : t.none63,
@@ -576,8 +612,8 @@ function indicatorCards(t, lang, i61, i63, i64) {
       text: t.hiLine(i63.hazardIndex.raw, t.status[i63.hazardIndex.status] ?? i63.hazardIndex.status),
     }),
   ]));
-  cards.append(card(t.card64, [
-    el('p', { class: `sdg6-level ${['high', 'extreme'].includes(i64.band) ? 'sdg6-bad' : i64.band === 'medium-high' ? 'sdg6-warn' : 'sdg6-good'}`, text: t.stress[i64.band] }),
+  cards.append(card(t.card64, tone64, [
+    level(tone64, t.stress[i64.band]),
     el('p', { class: 'sdg6-line sdg6-muted', text: `${t.index64}: ${i64.index}/100 (${t.adjust64(i64.reliabilityAdjust)}).` }),
   ]));
   return cards;
@@ -585,16 +621,18 @@ function indicatorCards(t, lang, i61, i63, i64) {
 
 function planTable(t, plan, state, choose) {
   const wrap = el('div', { class: 'table-wrap lab-table-wrap' });
-  const table = el('table', { class: 'lab-table sdg6-plan' });
-  table.append(el('thead', {}, el('tr', {}, [
-    el('th', { scope: 'col', text: t.colName }),
-    el('th', { scope: 'col', class: 'num', text: t.colUnits }),
-    el('th', { scope: 'col', class: 'num', text: t.colReached }),
-    el('th', { scope: 'col', class: 'num', text: t.colYears }),
-    el('th', { scope: 'col', class: 'num', text: t.colCost }),
-    el('th', { scope: 'col', text: t.colFit }),
+  // Explicit roles keep table semantics when phones restack the rows as cards.
+  const table = el('table', { class: 'lab-table sdg6-plan', role: 'table', 'aria-label': t.planTitle });
+  const col = (text, cls) => el('th', { scope: 'col', role: 'columnheader', ...(cls ? { class: cls } : {}), text });
+  table.append(el('thead', { role: 'rowgroup' }, el('tr', { role: 'row' }, [
+    col(t.colName),
+    col(t.colUnits, 'num'),
+    col(t.colReached, 'num'),
+    col(t.colYears, 'num'),
+    col(t.colCost, 'num'),
+    col(t.colFit),
   ])));
-  const body = el('tbody');
+  const body = el('tbody', { role: 'rowgroup' });
   for (const row of plan.rows) {
     const pick = el('button', {
       type: 'button', class: 'lab-pick sdg6-pick',
@@ -604,14 +642,20 @@ function planTable(t, plan, state, choose) {
     pick.addEventListener('click', () => choose({ focus: row.id }));
     body.append(el('tr', {
       class: `${plan.recommended?.id === row.id ? 'lab-active' : ''}${state.focus === row.id ? ' sdg6-row-focus' : ''}`,
-      'data-sdg6-row': row.id,
+      'data-sdg6-row': row.id, role: 'row',
     }, [
-      el('th', { scope: 'row' }, [pick, el('span', { class: 'lab-origin', text: t.blurbs[row.id] })]),
-      el('td', { class: 'num', text: String(row.units) }),
-      el('td', { class: 'num', text: fmtInt(row.peopleReached) }),
-      el('td', { class: 'num', text: fmtInt(row.personYears) }),
-      el('td', { class: 'num', text: fmtMoney(row.costPerPersonYear) }),
-      el('td', { class: `sdg6-fit-${row.fit}`, text: t.fit[row.fit] }),
+      el('th', { scope: 'row', role: 'rowheader' }, [pick, el('span', { class: 'lab-origin', text: t.blurbs[row.id] })]),
+      el('td', { class: 'num', role: 'cell', 'data-label': t.colUnits, text: fmtInt(row.units) }),
+      el('td', { class: 'num sdg6-reach', role: 'cell', 'data-label': t.colReached }, [
+        el('span', { class: 'sdg6-reach-n', text: fmtInt(row.peopleReached) }),
+        shareMeter(state.people > 0 ? row.peopleReached / state.people : 0,
+          t.reachShare(fmtInt(row.peopleReached), fmtInt(state.people)), `sdg6-meter-row sdg6-meter-${row.fit}`),
+      ]),
+      el('td', { class: 'num', role: 'cell', 'data-label': t.colYears, text: fmtInt(row.personYears) }),
+      el('td', { class: 'num sdg6-cost', role: 'cell', 'data-label': t.colCost, text: fmtMoney(row.costPerPersonYear) }),
+      el('td', { class: `sdg6-fit-${row.fit}`, role: 'cell', 'data-label': t.colFit }, [
+        el('span', { class: 'sdg6-badge' }, [markIcon(FIT_MARK[row.fit] ?? 'mark-missing'), t.fit[row.fit]]),
+      ]),
     ]));
   }
   table.append(body);
@@ -651,7 +695,7 @@ function planControls(t, state, choose) {
   for (const amount of [35, 100, 500, 2500, 10000]) {
     const chip = el('button', {
       type: 'button', class: 'lab-chip sdg6-chip', 'data-sdg6-budget': String(amount),
-      'aria-pressed': String(state.budget === amount), text: fmtMoney(amount, 0),
+      'aria-pressed': String(state.budget === amount), text: `$${fmtInt(amount)}`,
     });
     chip.addEventListener('click', () => choose({ budget: amount }));
     chips.append(chip);
@@ -690,6 +734,7 @@ function sdg6Chart(t, plan, state, choose) {
   svg.append(text(ML + plotW / 2, H - 6, t.xLabel));
   const yLab = text(12, MT + plotH / 2, t.yLabel);
   yLab.setAttribute('transform', `rotate(-90 12 ${MT + plotH / 2})`);
+  yLab.setAttribute('class', 'sdg6-ylab');
   svg.append(yLab);
 
   const points = plan.rows.map(row => ({ row, cx: x(row.costPerPersonYear), cy: y(row.personYears) }));
@@ -700,10 +745,12 @@ function sdg6Chart(t, plan, state, choose) {
       return Math.min(nearest, d);
     }, 30)));
   }
-  const fitCls = { yes: 'sdg6-dot-yes', partial: 'sdg6-dot-partial', no: 'sdg6-dot-no', withheld: 'sdg6-dot-no', 'no-need': 'sdg6-dot-none' };
+  const fitCls = DOT_CLASS;
   for (const { row, cx, cy, hitR } of points) {
+    // Key markers (the recommended and the focused option) keep their name on narrow screens.
+    const key = row.id === plan.recommended?.id || row.id === state.focus;
     const g = svgEl('g', {
-      tabindex: '0', role: 'listitem', class: 'lab-bar sdg6-marker', 'data-sdg6-marker': row.id,
+      tabindex: '0', role: 'listitem', class: `lab-bar sdg6-marker${key ? ' sdg6-marker-key' : ''}`, 'data-sdg6-marker': row.id,
     });
     g.setAttribute('aria-label', t.focusDetail(t.interventions[row.id], fmtMoney(row.costPerPersonYear), fmtInt(row.personYears)));
     const activate = () => choose({ focus: row.id });
@@ -717,12 +764,70 @@ function sdg6Chart(t, plan, state, choose) {
       cx, cy, r: radius.toFixed(2),
       class: `sdg6-dot ${fitCls[row.fit]}${state.focus === row.id ? ' sdg6-dot-focus' : ''}`,
     }));
-    const label = text(cx + radius + 5, cy + 3.5, t.interventions[row.id], 'start');
+    // Markers in the right third label inward so long names never run past the frame.
+    // Markers on the floor of the plot lift their label clear of the axis.
+    const inward = cx > ML + plotW * 0.62;
+    const ly = cy > MT + plotH - 16 ? cy - radius - 6 : cy + 3.5;
+    const label = inward
+      ? text(cx - radius - 2, ly, t.interventions[row.id], 'end')
+      : text(cx + radius + 5, ly, t.interventions[row.id], 'start');
     label.setAttribute('class', 'seg-label');
     g.append(label);
     svg.append(g);
   }
   return svg;
+}
+
+// After layout, move any visible marker label that covers another marker's dot, an
+// earlier label, or the axes to the nearest clear spot beside its own dot, and draw a
+// thin leader when it had to shift. Measured boxes hold at every CSS font size; no-op off-DOM.
+function declutterLabels(svg) {
+  if (!svg.isConnected || typeof svg.getBoundingClientRect !== 'function') return;
+  const frame = svg.getBoundingClientRect();
+  if (!frame.width) return;
+  const scale = frame.width / 560;
+  const plot = { left: frame.left + 52 * scale, right: frame.left + 544 * scale, top: frame.top + 2 * scale, bottom: frame.top + 254 * scale };
+  const hits = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  const markers = [...svg.querySelectorAll('.sdg6-marker')];
+  const placed = [];
+  for (const marker of markers) {
+    const label = marker.querySelector('.seg-label');
+    const dot = marker.querySelector('.sdg6-dot');
+    if (!label || !dot || !label.getBoundingClientRect().width) continue;
+    const others = markers.filter(m => m !== marker).map(m => m.querySelector('.sdg6-dot').getBoundingClientRect());
+    const cx = Number(dot.getAttribute('cx'));
+    const cy = Number(dot.getAttribute('cy'));
+    const r = Number(dot.getAttribute('r'));
+    const start = { x: label.getAttribute('x'), y: Number(label.getAttribute('y')), anchor: label.getAttribute('text-anchor') };
+    const set = ({ x, y, anchor }) => {
+      label.setAttribute('x', String(x));
+      label.setAttribute('y', String(y));
+      label.setAttribute('text-anchor', anchor);
+    };
+    const clear = () => {
+      const box = label.getBoundingClientRect();
+      return box.left >= plot.left && box.right <= plot.right && box.top >= plot.top && box.bottom <= plot.bottom
+        && !others.some(other => hits(box, other)) && !placed.some(prev => hits(box, prev));
+    };
+    if (!clear()) {
+      const step = label.getBoundingClientRect().height / scale + 1;
+      const right = { x: cx + r + 5, anchor: 'start' };
+      const left = { x: cx - r - 5, anchor: 'end' };
+      const sides = start.anchor === 'end' ? [left, right] : [right, left];
+      const candidates = [];
+      for (const k of [0, -1, 1, -2, 2, -3]) {
+        for (const side of sides) candidates.push({ ...side, y: cy + 3.5 + k * step, shifted: k !== 0 });
+      }
+      const found = candidates.find(c => { set(c); return clear(); });
+      if (!found) set(start);
+      else if (found.shifted) {
+        const tip = found.anchor === 'start' ? found.x - 2 : found.x + 2;
+        const leader = svgEl('line', { x1: cx, y1: cy, x2: tip, y2: found.y - 4, class: 'sdg6-leader' });
+        marker.insertBefore(leader, dot);
+      }
+    }
+    placed.push(label.getBoundingClientRect());
+  }
 }
 
 export function renderSdg6Section(root, { lang = 'en', state, summary = null, tapLabel = null, choose }) {
@@ -760,21 +865,39 @@ export function renderSdg6Section(root, { lang = 'en', state, summary = null, ta
     const item = plan.rows.find(row => row.id === plan.recommended.id);
     const caveat = plan.recommended.kind === 'partial' ? ` (${t.recPartial})`
       : plan.recommended.kind === 'economics' ? ` (${t.recEconomics})` : '';
-    root.append(el('p', {
+    const tone = plan.recommended.kind === 'partial' ? 'warn' : plan.recommended.kind === 'economics' ? 'bad' : 'good';
+    const verdict = el('div', { class: `sdg6-verdict sdg6-verdict-${tone}` });
+    verdict.append(el('p', {
       class: 'model-value sdg6-rec', 'data-sdg6-rec': item.id, 'aria-live': 'polite',
-      text: `${t.recommended(t.interventions[item.id])}${caveat}`,
-    }));
+    }, [markIcon(TONE_MARK[tone], 'sdg6-rec-mark'), `${t.recommended(t.interventions[item.id])}${caveat}`]));
     const pct = state.people > 0 ? Math.round((item.peopleReached / state.people) * 100) : 0;
-    root.append(el('p', {
-      class: 'notes', 'data-sdg6-coverage': '',
-      text: t.coverage(fmtInt(item.peopleReached), fmtInt(state.people), Math.max(0, 100 - pct)),
-    }));
+    const coverageText = t.coverage(fmtInt(item.peopleReached), fmtInt(state.people), Math.max(0, 100 - pct));
+    verdict.append(
+      shareMeter(state.people > 0 ? item.peopleReached / state.people : 0, coverageText, 'sdg6-meter-verdict'),
+      el('p', { class: 'notes sdg6-coverage', 'data-sdg6-coverage': '', text: coverageText }),
+    );
+    root.append(verdict);
   } else {
-    root.append(el('p', { class: 'model-value', text: t.coverage(0, fmtInt(state.people), 100) }));
+    const coverageText = t.coverage(0, fmtInt(state.people), 100);
+    const verdict = el('div', { class: 'sdg6-verdict sdg6-verdict-bad' });
+    verdict.append(
+      el('p', { class: 'model-value', text: coverageText }),
+      shareMeter(0, coverageText, 'sdg6-meter-verdict'),
+    );
+    root.append(verdict);
   }
 
   root.append(el('h3', { text: t.chartTitle }), el('p', { class: 'notes', text: t.chartNote }));
-  root.append(sdg6Chart(t, plan, state, patch));
+  const legend = el('ul', { class: 'sdg6-legend', 'aria-label': t.colFit });
+  // Legend lists only the fits on screen, so a withheld plan never reads as "does not cover".
+  const shown = new Set(plan.rows.map(row => row.fit));
+  for (const fit of ['yes', 'partial', 'no', 'withheld', 'no-need'].filter(f => shown.has(f))) {
+    legend.append(el('li', {}, [svgDot(fit), t.fit[fit]]));
+  }
+  root.append(legend);
+  const chart = sdg6Chart(t, plan, state, patch);
+  root.append(chart);
+  declutterLabels(chart);
   if (state.focus) {
     const row = plan.rows.find(entry => entry.id === state.focus);
     if (row) {
