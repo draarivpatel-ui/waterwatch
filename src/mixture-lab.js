@@ -10,6 +10,10 @@ import {
 import { PRESETS } from './presets.js';
 import { parseCsv } from './import.js';
 import { RULESET, canonicalJson, csvCell } from './exports.js';
+import {
+  SDG6_DEFAULT_STATE, SDG6_STRINGS, normalizeSdg6State,
+  renderSdg6Section, sdg6Payload, sdg6SelfTests,
+} from './sdg6-equity.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const has = (obj, key) => Object.hasOwn(obj, key);
@@ -144,7 +148,7 @@ function b64urlDecode(text) {
 export const LAB_PRESETS = Object.freeze(['school', 'well', 'storm', 'baseline', 'imported']);
 export const LAB_SCENARIOS = Object.freeze(['baseline', 'flush', 'carbon', 'ro']);
 export const LAB_LANGS = Object.freeze(['en', 'es']);
-const STATE_KEYS = new Set(['preset', 'scenario', 'lang', 'focus']);
+const STATE_KEYS = new Set(['preset', 'scenario', 'lang', 'focus', 'sdg']);
 const DEFAULT_STATE = Object.freeze({ preset: 'school', scenario: 'baseline', lang: 'en', focus: null });
 const FOCUS_IDS = new Set([...CHEMICALS.map(({ id }) => id), 'hazard-index']);
 
@@ -169,6 +173,11 @@ export function normalizeLabState(input) {
   if (has(input, 'focus')) {
     if (input.focus !== null && (typeof input.focus !== 'string' || !FOCUS_IDS.has(input.focus))) return null;
     state.focus = input.focus;
+  }
+  if (has(input, 'sdg')) {
+    const sdg = normalizeSdg6State(input.sdg);
+    if (sdg === null) return null;
+    state.sdg = sdg;
   }
   return state;
 }
@@ -377,7 +386,7 @@ export function scenarioMatrix(sample, scenario) {
 
 /* ---------- digest-stamped lab brief ---------- */
 
-export function labBriefPayload({ state, comparator, matrix }) {
+export function labBriefPayload({ state, comparator, matrix, sdg6 }) {
   const normalized = normalizeLabState(state);
   if (!normalized) throw new RangeError('Lab state is not exportable.');
   const rows = buildComparator(comparator).map(row => ({
@@ -418,6 +427,7 @@ export function labBriefPayload({ state, comparator, matrix }) {
       })),
       hazardIndex: matrix.hazardIndex,
     } : null,
+    ...(sdg6 ? { sdg6 } : {}),
   };
 }
 
@@ -475,6 +485,28 @@ function briefCsv(fingerprint, payload) {
         payload.matrix.hazardIndex.cell.value, ''],
     );
   }
+  if (payload.sdg6) {
+    const sdg = payload.sdg6;
+    rows.push(
+      [],
+      ['sdg6', 'schema', sdg.schema],
+      ['sdg6', 'state', canonicalJson(sdg.state)],
+      ['sdg6', 'indicator', 'level_6_1_1', sdg.indicators['sdg-6-1'].level],
+      ['sdg6', 'indicator', 'contamination_6_1_1', sdg.indicators['sdg-6-1'].free],
+      ['sdg6', 'indicator', 'band_6_3_2', sdg.indicators['sdg-6-3'].band],
+      ['sdg6', 'indicator', 'exceedances_6_3_2', sdg.indicators['sdg-6-3'].count],
+      ['sdg6', 'indicator', 'stress_index_6_4_2', sdg.indicators['sdg-6-4'].index],
+      ['sdg6', 'plan', 'budget', sdg.plan.budget, 'people', sdg.plan.people,
+        'recommended', sdg.plan.recommended?.id ?? 'none',
+        'pick_kind', sdg.plan.recommended?.kind ?? 'none'],
+      ['sdg6', 'intervention', 'units', 'people_reached', 'person_years',
+        'cost_per_person_year', 'contaminant_fit'],
+      ...sdg.plan.rows.map(row => [
+        'sdg6', row.id, row.units, row.peopleReached, row.personYears,
+        row.costPerPersonYear, row.fit,
+      ]),
+    );
+  }
   return `${rows.map(row => row.map(csvCell).join(',')).join('\r\n')}\r\n`;
 }
 
@@ -501,6 +533,27 @@ function briefMarkdown(fingerprint, payload) {
       '| --- | --- | --- | --- | --- | --- |',
       ...payload.matrix.rows.map(row =>
         `| ${row.contaminant} | ${row.baselineValue ?? 'not reported'} | ${row.baselineStatus} | ${row.cell.kind} | ${row.cell.value ?? ''} | ${row.cell.status ?? ''} |`),
+    );
+  }
+  if (payload.sdg6) {
+    const sdg = payload.sdg6;
+    lines.push(
+      '',
+      `SDG 6 module state: \`${canonicalJson(sdg.state)}\``,
+      '',
+      '| Indicator | Result |',
+      '| --- | --- |',
+      `| SDG 6.1.1 service level | ${sdg.indicators['sdg-6-1'].level} |`,
+      `| SDG 6.1.1 contamination status | ${sdg.indicators['sdg-6-1'].free} |`,
+      `| SDG 6.3.2 exceedance band | ${sdg.indicators['sdg-6-3'].band} (${sdg.indicators['sdg-6-3'].count} exceedances) |`,
+      `| SDG 6.4.2 stress index | ${sdg.indicators['sdg-6-4'].index}/100 (${sdg.indicators['sdg-6-4'].band}) |`,
+      '',
+      `Intervention plan for a ${sdg.plan.budget} USD budget and ${sdg.plan.people} people:`,
+      '',
+      '| Intervention | Units | People reached | Person-years | Cost per person-year | Fit |',
+      '| --- | --- | --- | --- | --- | --- |',
+      ...sdg.plan.rows.map(row =>
+        `| ${row.id} | ${row.units} | ${row.peopleReached} | ${row.personYears} | ${row.costPerPersonYear.toFixed(4)} | ${row.fit} |`),
     );
   }
   lines.push(
@@ -655,7 +708,7 @@ export function runSelfTests() {
     return expect(summary.unreported === 8 && summary.ratios.copper.value === null
       && summary.values.copper === null, `${summary.unreported} unreported cells counted, never zero`);
   });
-  return tests;
+  return [...tests, ...sdg6SelfTests()];
 }
 
 /* ---------- localized strings ---------- */
@@ -845,7 +898,10 @@ function download(name, mime, text) {
 export function mountLab(root, hooks = {}) {
   const getImported = typeof hooks.getImported === 'function' ? hooks.getImported : () => null;
   const initial = decodeLabHash(globalThis.location?.hash ?? '') ?? { ...DEFAULT_STATE };
-  const lab = { ...initial, tapIndex: 0, verifyNote: null, tests: null, link: '' };
+  const lab = {
+    ...initial, tapIndex: 0, verifyNote: null, tests: null, link: '',
+    sdg: initial.sdg ?? { ...SDG6_DEFAULT_STATE },
+  };
 
   const tr = () => STRINGS[lab.lang];
   const chemName = id => CHEM_SHORT[id]?.[lab.lang] ?? id;
@@ -855,6 +911,7 @@ export function mountLab(root, hooks = {}) {
     const href = globalThis.location?.href?.split('#')[0] ?? '';
     return `${href}#${encodeLabHash({
       preset: lab.preset, scenario: lab.scenario, lang: lab.lang, focus: lab.focus,
+      sdg: lab.sdg,
     })}`;
   };
 
@@ -866,7 +923,14 @@ export function mountLab(root, hooks = {}) {
   };
 
   const choose = patch => {
-    Object.assign(lab, patch);
+    const next = { ...patch };
+    if (has(next, 'sdg')) {
+      const sdg = normalizeSdg6State(next.sdg);
+      if (sdg === null) return;
+      lab.sdg = sdg;
+      delete next.sdg;
+    }
+    Object.assign(lab, next);
     update();
   };
 
@@ -1138,9 +1202,16 @@ export function mountLab(root, hooks = {}) {
 
   function currentBrief(view, matrix) {
     return labBrief({
-      state: { preset: lab.preset, scenario: lab.scenario, lang: lab.lang, focus: lab.focus },
+      state: { preset: lab.preset, scenario: lab.scenario, lang: lab.lang, focus: lab.focus, sdg: lab.sdg },
       comparator: datasets(),
       matrix,
+      sdg6: view ? sdg6Payload({
+        state: lab.sdg,
+        sample: {
+          tap: view.summary.tap, advisory: view.summary.advisory,
+          ecoli: view.summary.ecoli, values: view.summary.values,
+        },
+      }) : null,
     });
   }
 
@@ -1284,6 +1355,23 @@ export function mountLab(root, hooks = {}) {
     root.append(testsBox);
     renderNote();
     renderTests();
+
+    const sdgSection = document.getElementById('sdg6');
+    const sdgBody = document.getElementById('sdg6-body');
+    const sdgHeading = document.getElementById('sdg6-h');
+    if (sdgSection && sdgBody) {
+      sdgSection.hidden = false;
+      if (sdgHeading) sdgHeading.textContent = (SDG6_STRINGS[lab.lang] ?? SDG6_STRINGS.en).title;
+      renderSdg6Section(sdgBody, {
+        lang: lab.lang,
+        state: lab.sdg,
+        summary: view ? view.summary : null,
+        tapLabel: view
+          ? `${t.sourceNames[view.dataset.id] ?? view.dataset.id} / ${view.summary.tap}`
+          : null,
+        choose: next => choose({ sdg: next }),
+      });
+    }
   }
 
   function renderNote() {
