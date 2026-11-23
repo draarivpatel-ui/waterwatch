@@ -4,6 +4,9 @@ A fully offline field notebook that screens single-tap drinking-water lab result
 against federal screening benchmarks. It reads a strict CSV of measurements,
 shows which readings sit above their reference levels, models simple what-if
 scenarios, and prints a bilingual (English/Spanish) tap-safety one-pager.
+A mixture and sensitivity lab compares all four presets against every
+benchmark, runs deterministic self-tests in the page, and exports a
+SHA-256-stamped lab brief that a `#ww=` bookmark link restores.
 
 Everything runs in the browser. There are no dependencies, no build step, and
 no network calls: the page's Content-Security-Policy forbids connections, and
@@ -28,7 +31,9 @@ these files locally to run without internet.
 npm test
 ```
 
-Node 18 or newer, no packages to install.
+Node 18 or newer, no packages to install. The suite has 544 tests, 177 of
+them covering the lab module, alongside the 18 deterministic self-tests the
+page itself runs.
 
 ## What it does and does not claim
 
@@ -60,6 +65,10 @@ Node 18 or newer, no packages to install.
   regulatory feed.
 - Every export is tagged with its origin: `synthetic` for the bundled presets
   and `unverified-input` for anything the user typed, pasted, or uploaded.
+- The lab's scenario matrices are teaching models. During a reported advisory
+  (boil, do-not-drink, do-not-use) or a positive E. coli result every modeled
+  reduction is withheld; a household filter or flush model is never presented
+  as an advisory fix.
 
 ## Import format
 
@@ -90,7 +99,10 @@ pfoa_ppt, pfos_ppt, pfhxs_ppt, pfna_ppt, genx_ppt, pfbs_ppt
 - `src/presets.js`: the four synthetic preset CSVs.
 - `src/exports.js`: audit CSV and fingerprinted JSON bundle writers, each
   flagged `synthetic` or `unverified-input` from where the data came.
-- `test/`: node:test suites for the parser, shortcuts, engine, and exports.
+- `src/mixture-lab.js`: pure-JS SHA-256, the `#ww=` bookmark codec, the preset
+  comparator, scenario matrices, the digest-stamped lab brief, the in-page
+  self-tests, and the English/Spanish lab mount.
+- `test/`: node:test suites for the parser, shortcuts, engine, exports, and lab.
 - `scripts/browser-smoke.mjs`: headless-Chrome smoke run that captures the
   screenshots in `docs/`.
 - `docs/REGULATORY.md`: the regulatory reference notes behind the benchmarks.

@@ -18,6 +18,7 @@ const state = {
   synthetic: false,
 };
 let importRequest = 0;
+let labController = null;
 
 const LABELS = Object.fromEntries(CHEMICALS.map(({ id, label }) => [id, label]));
 const UNKNOWN_NAMES = { ...LABELS, advisory: 'advisory', ecoli: 'E. coli status' };
@@ -242,6 +243,7 @@ function applyText(text, note, synthetic = false) {
   state.stale = false;
   state.synthetic = synthetic;
   setSourceNote(note);
+  labController?.setSource(PRESETS.find(preset => preset.csv === text)?.id ?? 'imported');
   renderAll();
 }
 
@@ -969,11 +971,29 @@ function renderAll() {
   renderFlush();
   renderTreatment();
   updateStale();
+  labController?.refresh();
+}
+
+function setupLab() {
+  const section = $('lab');
+  const body = $('lab-body');
+  if (!section || !body) return;
+  import('./mixture-lab.js').then(lab => {
+    labController = lab.mountLab(body, {
+      getImported: () => (state.stale || state.synthetic || !state.samples.length ? null : {
+        origin: 'unverified-input',
+        samples: state.samples,
+      }),
+    });
+    section.hidden = false;
+    labController.refresh();
+  }).catch(() => {});
 }
 
 function init() {
   renderPresets();
   renderSources();
+  setupLab();
 
   $('csv-input').addEventListener('input', markStale);
   $('apply').addEventListener('click', () => {
