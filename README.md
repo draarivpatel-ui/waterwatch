@@ -6,7 +6,10 @@ shows which readings sit above their reference levels, models simple what-if
 scenarios, and prints a bilingual (English/Spanish) tap-safety one-pager.
 A mixture and sensitivity lab compares all four presets against every
 benchmark, runs deterministic self-tests in the page, and exports a
-SHA-256-stamped lab brief that a `#ww=` bookmark link restores.
+SHA-256-stamped lab brief that a `#ww=` bookmark link restores. An SDG 6
+clean-water equity lab models the 6.1.1 service ladder, the 6.3.2 exceedance
+profile and an illustrative 6.4.2 stress index, and plans low-cost
+interventions against a grant budget.
 
 Everything runs in the browser. There are no dependencies, no build step, and
 no network calls: the page's Content-Security-Policy forbids connections, and
@@ -31,9 +34,9 @@ these files locally to run without internet.
 npm test
 ```
 
-Node 18 or newer, no packages to install. The suite has 544 tests, 177 of
-them covering the lab module, alongside the 18 deterministic self-tests the
-page itself runs.
+Node 18 or newer, no packages to install. The suite has 695 tests, 328 of
+them covering the two lab modules, alongside the 32 deterministic self-tests
+the page itself runs.
 
 ## What it does and does not claim
 
@@ -102,9 +105,16 @@ pfoa_ppt, pfos_ppt, pfhxs_ppt, pfna_ppt, genx_ppt, pfbs_ppt
 - `src/mixture-lab.js`: pure-JS SHA-256, the `#ww=` bookmark codec, the preset
   comparator, scenario matrices, the digest-stamped lab brief, the in-page
   self-tests, and the English/Spanish lab mount.
-- `test/`: node:test suites for the parser, shortcuts, engine, exports, and lab.
+- `src/sdg6-equity.js`: the SDG 6 equity lab: indicator engines for 6.1.1,
+  6.3.2 and 6.4.2, the intervention planner and fit model, and its own
+  in-page self-tests.
+- `test/`: node:test suites for the parser, shortcuts, engine, exports,
+  hygiene, and both lab modules.
 - `scripts/browser-smoke.mjs`: headless-Chrome smoke run that captures the
   screenshots in `docs/`.
+- `scripts/sdg6-audit.mjs`: headless-Chrome audit of the SDG 6 lab: real
+  pointer and keyboard input, `#ww=` reload-restore, and a routed JSON
+  download.
 - `docs/REGULATORY.md`: the regulatory reference notes behind the benchmarks.
 
 ## Sources
