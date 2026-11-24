@@ -10,7 +10,9 @@
 //   node scripts/record-demo.mjs all       synth (if stale) then capture
 //   node scripts/record-demo.mjs check     ffprobe report on the mp4
 //
-// Voiceover uses macOS `say` (Samantha). No API keys, no network. The video
+// Voiceover uses Aariv's local OmniVoice clone (mlx-community/OmniVoice-bf16,
+// voice-ref.wav + voice-ref.txt) via scripts/omnivoice_say.py - never macOS
+// `say`. No API keys, no network. The video
 // is recorded by a throwaway headless Chrome with an empty profile inside
 // WATERWATCH_DEMO_TMP (default: a fresh /tmp/waterwatch-l96-* dir that is
 // always deleted). It never touches a signed-in browser, never downloads to
@@ -39,7 +41,7 @@
 
 import { spawn, spawnSync, execFileSync, execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, linkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -58,8 +60,10 @@ const OUT_PROOF_HTML = join(DEMO, 'proof.html');
 const STEPS_JSON = join(DEMO, 'steps.json');
 const HARNESS = resolve(ROOT, '..', '..', 'hark_honesty_and_defect_harness.py');
 
-const VOICE = process.env.WATERWATCH_VOICE || 'Samantha';
-const RATE = Number(process.env.WATERWATCH_VOICE_RATE || 170);
+const OMNI_PY = process.env.WATERWATCH_OMNI_PY || join(homedir(), 'mlx-audio-venv', 'bin', 'python');
+const OMNI_HELPER = join(ROOT, 'scripts', 'omnivoice_say.py');
+const OMNI_SEED = Number(process.env.WATERWATCH_OMNI_SEED || 1);
+const ATEMPO = Number(process.env.WATERWATCH_ATEMPO || 1.03); // pace factor so the video stays <= 180 s
 const SR = 24000;
 const LEAD = 0.6, GAP_SENT = 0.3, GAP_PARA = 0.75, TAIL = 1.0;
 const FPS = 30, W = 1920, H = 1080;
@@ -91,31 +95,40 @@ async function afDuration(file) {
 
 async function synth() {
   const paras = parseNarration(readFileSync(NARRATION_TXT, 'utf8'));
-  const cache = join(work, 'tts');
+  const cache = process.env.WATERWATCH_TTS_CACHE || join(work, 'tts');
   mkdirSync(cache, { recursive: true });
+  const units = [];
+  for (let p = 0; p < paras.length; p++)
+    for (let s = 0; s < paras[p].length; s++)
+      units.push({ id: `s${p}-${s}`, text: paras[p][s], para: p, sent: s });
+  // One OmniVoice batch job covers every missing sentence (one model load).
+  // A unit is synthesised only when neither its normalised wav nor its raw
+  // model-rate src.wav already sits in the cache.
+  const missing = units.filter((u) => !existsSync(join(cache, `${u.id}.wav`)) && !existsSync(join(cache, `${u.id}.src.wav`)));
+  if (missing.length) {
+    const job = join(work, 'omnivoice-job.json');
+    writeFileSync(job, JSON.stringify({ seed: OMNI_SEED, units: missing.map((u) => ({ id: u.id, text: u.text, out: join(cache, `${u.id}.src.wav`) })) }, null, 1) + '\n');
+    execFileSync('nice', ['-n', '15', OMNI_PY, OMNI_HELPER, job], { stdio: 'inherit' });
+  }
   const sents = [];
   const inputs = [];
   let t = LEAD;
   let prevPara = -1;
   inputs.push(['-f', 'lavfi', '-i', `aevalsrc=0:d=${LEAD}:s=${SR}`]);
-  for (let p = 0; p < paras.length; p++) {
-    for (let s = 0; s < paras[p].length; s++) {
-      const text = paras[p][s];
-      const aiff = join(cache, `s${p}-${s}.aiff`);
-      const wav = join(cache, `s${p}-${s}.wav`);
-      if (!existsSync(wav)) {
-        await run('say', ['-v', VOICE, '-r', String(RATE), '-o', aiff, text]);
-        await run('ffmpeg', ['-v', 'error', '-y', '-i', aiff, '-ar', String(SR), '-ac', '1', wav]);
-      }
-      const dur = await afDuration(wav);
-      const gap = prevPara === -1 ? 0 : (p !== prevPara ? GAP_PARA : GAP_SENT);
-      if (gap > 0) inputs.push(['-f', 'lavfi', '-i', `aevalsrc=0:d=${gap}:s=${SR}`]);
-      t += gap;
-      sents.push({ para: p, sent: s, text, dur: Math.round(dur * 1000) / 1000, start: Math.round(t * 1000) / 1000 });
-      inputs.push(['-i', wav]);
-      t += dur;
-      prevPara = p;
+  for (const u of units) {
+    const src = join(cache, `${u.id}.src.wav`);
+    const wav = join(cache, `${u.id}.wav`);
+    if (!existsSync(wav)) {
+      await run('ffmpeg', ['-v', 'error', '-y', '-i', src, '-af', `atempo=${ATEMPO}`, '-ar', String(SR), '-ac', '1', wav]);
     }
+    const dur = await afDuration(wav);
+    const gap = prevPara === -1 ? 0 : (u.para !== prevPara ? GAP_PARA : GAP_SENT);
+    if (gap > 0) inputs.push(['-f', 'lavfi', '-i', `aevalsrc=0:d=${gap}:s=${SR}`]);
+    t += gap;
+    sents.push({ para: u.para, sent: u.sent, text: u.text, dur: Math.round(dur * 1000) / 1000, start: Math.round(t * 1000) / 1000 });
+    inputs.push(['-i', wav]);
+    t += dur;
+    prevPara = u.para;
   }
   inputs.push(['-f', 'lavfi', '-i', `aevalsrc=0:d=${TAIL}:s=${SR}`]);
   const total = Math.round((t + TAIL) * 1000) / 1000;
@@ -125,7 +138,7 @@ async function synth() {
   await run('ffmpeg', ['-v', 'error', '-y', ...flat, '-filter_complex', `${labels}concat=n=${inputs.length}:v=0:a=1[a]`, '-map', '[a]', '-ar', String(SR), '-ac', '1', NARRATION_WAV]);
   const actual = await afDuration(NARRATION_WAV);
   const timing = {
-    voice: VOICE, rate: RATE, sr: SR, lead: LEAD, gap_sent: GAP_SENT, gap_para: GAP_PARA, tail: TAIL,
+    voice: 'OmniVoice-bf16 (Aariv voice clone)', seed: OMNI_SEED, sr: SR, lead: LEAD, gap_sent: GAP_SENT, gap_para: GAP_PARA, tail: TAIL,
     total, wav_seconds: Math.round(actual * 1000) / 1000,
     words: sents.reduce((a, e) => a + e.text.split(/\s+/).length, 0),
     sentences: sents,

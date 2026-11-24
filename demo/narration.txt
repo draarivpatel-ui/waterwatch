@@ -15,7 +15,7 @@ Sliding evaporation to 20 percent turns 13.6 into 17, because boiling off water 
 The mixture and sensitivity lab compares all four presets against every benchmark at once.
 It draws the Hazard Index breakdown and the per-contaminant ratio chart, then runs its deterministic checks in the page.
 All 32 in-page self-tests pass.
-The audited brief stamps one SHA-256 digest across the on-page line and every export.
+The audited brief stamps one SHA 256 digest across the on-page line and every export.
 
 The SDG 6 lab grades the service ladder, the exceedance profile, and an illustrative water stress index for that same sample.
 Five low-cost interventions are priced against the grant budget, and the planner recommends the best modeled reach.
