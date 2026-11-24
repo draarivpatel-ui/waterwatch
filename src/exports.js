@@ -1,4 +1,5 @@
 import { normalizeSample, screenSample } from './engine.js';
+import { sha256Hex } from './sha256.js';
 
 export const RULESET = 'epa-2024-sample-screen-v1';
 
@@ -112,11 +113,17 @@ export async function buildBundle(samples, { source = 'unverified-input' } = {})
     source: auditSource(source),
     samples: snapshots(samples),
   };
-  if (!globalThis.crypto?.subtle) {
-    throw new Error('Local SHA-256 requires a secure browser context such as localhost or HTTPS.');
-  }
   const bytes = new TextEncoder().encode(canonicalJson(payload));
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
-  const fingerprint = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  let fingerprint;
+  if (globalThis.crypto?.subtle) {
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+    fingerprint = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  } else {
+    // Plain HTTP on a LAN is not a secure context, so WebCrypto can be absent
+    // even though the application is fully offline. Keep fingerprinted
+    // exports available with the same local SHA-256 implementation the lab
+    // uses; no network or native dependency is introduced.
+    fingerprint = sha256Hex(bytes);
+  }
   return { fingerprint, payload };
 }

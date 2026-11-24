@@ -165,3 +165,14 @@ test('exports reject provenance which suggests unverified samples were verified'
   assert.throws(() => auditCsv([sample()], { source: 'verified' }), /Export source/);
   await assert.rejects(buildBundle([sample()], { source: 'verified' }), /Export source/);
 });
+
+test('fingerprinted bundle still works when WebCrypto is unavailable', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
+  try {
+    const result = await buildBundle([sample()]);
+    assert.equal(result.fingerprint, createHash('sha256').update(canonicalJson(result.payload), 'utf8').digest('hex'));
+  } finally {
+    Object.defineProperty(globalThis, 'crypto', descriptor);
+  }
+});
