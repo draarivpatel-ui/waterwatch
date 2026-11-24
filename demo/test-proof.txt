@@ -1,0 +1,9 @@
+WaterWatch - verification proof
+commit: 70aac2a (captured during scripts/record-demo.mjs)
+
+$ node --test test/
+  tests 695, pass 695, fail 0
+$ node scripts/sdg6-audit.mjs
+  56/56 checks passed
+$ hark_honesty_and_defect_harness.py --audit <repo>
+  Audited 34 files in waterwatch: 0 violation(s).

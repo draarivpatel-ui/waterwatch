@@ -6,6 +6,9 @@
   "description": "Offline single-tap water sample screening notebook.",
   "scripts": {
     "serve": "python3 -m http.server 8000 --bind 127.0.0.1",
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "demo:synth": "node scripts/record-demo.mjs synth",
+    "demo:capture": "node scripts/record-demo.mjs capture",
+    "demo:check": "node scripts/record-demo.mjs check"
   }
 }

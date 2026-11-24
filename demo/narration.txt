@@ -1,0 +1,29 @@
+WaterWatch is an offline field notebook that screens drinking water samples against federal reference levels, now with an SDG 6 clean-water equity lab built in.
+Everything runs in this one page, and its security policy forbids network connections, so nothing ever leaves the device.
+
+The School tap preset is a synthetic first draw at an older elementary school.
+Lead reads 24.6 parts per billion against the 10 part action level, while the same fountain after a flush reads 3.1.
+The report keeps both lead action levels on screen as context and never calls either one a safety verdict.
+
+The Industrial corridor preset, a synthetic private well, shows why the mixture matters.
+No single PFAS reading tops its own benchmark, yet four contributions sum to a Hazard Index of exactly 1.27, flagged above the limit of 1 beside the rule's one significant figure display.
+
+After the storm, a boil advisory pairs with a microbial detection and nitrate at 13.6 milligrams per liter.
+The guidance is bottled water first and the boil notice exactly as issued; the filter table warns a household filter is not an advisory fix.
+Sliding evaporation to 20 percent turns 13.6 into 17, because boiling off water only concentrates what stays behind.
+
+The mixture and sensitivity lab compares all four presets against every benchmark at once.
+It draws the Hazard Index breakdown and the per-contaminant ratio chart, then runs its deterministic checks in the page.
+All 32 in-page self-tests pass.
+The audited brief stamps one SHA-256 digest across the on-page line and every export.
+
+The SDG 6 lab grades the service ladder, the exceedance profile, and an illustrative water stress index for that same sample.
+Five low-cost interventions are priced against the grant budget, and the planner recommends the best modeled reach.
+A fit badge says plainly when an option covers the reported gaps, and an active advisory withholds every contaminant-fit claim.
+On the impact chart every marker is focusable, and every label declutters itself instead of colliding.
+
+One tap renders the whole lab in Spanish, indicators, planner and chart included.
+
+The same recording run verified 695 of 695 Node tests, 56 of 56 headless audit checks, and zero honesty findings.
+Everything shown was computed in the page during this drive, with zero network requests.
+WaterWatch. Know what is in your tap.

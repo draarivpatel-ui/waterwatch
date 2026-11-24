@@ -1,0 +1,168 @@
+{
+ "voice": "Samantha",
+ "rate": 170,
+ "sr": 24000,
+ "lead": 0.6,
+ "gap_sent": 0.3,
+ "gap_para": 0.75,
+ "tail": 1,
+ "total": 158.088,
+ "wav_seconds": 158.088,
+ "words": 384,
+ "sentences": [
+  {
+   "para": 0,
+   "sent": 0,
+   "text": "WaterWatch is an offline field notebook that screens drinking water samples against federal reference levels, now with an SDG 6 clean-water equity lab built in.",
+   "dur": 9.418,
+   "start": 0.6
+  },
+  {
+   "para": 0,
+   "sent": 1,
+   "text": "Everything runs in this one page, and its security policy forbids network connections, so nothing ever leaves the device.",
+   "dur": 7.206,
+   "start": 10.318
+  },
+  {
+   "para": 1,
+   "sent": 0,
+   "text": "The School tap preset is a synthetic first draw at an older elementary school.",
+   "dur": 4.494,
+   "start": 18.274
+  },
+  {
+   "para": 1,
+   "sent": 1,
+   "text": "Lead reads 24.6 parts per billion against the 10 part action level, while the same fountain after a flush reads 3.1.",
+   "dur": 7.957,
+   "start": 23.068
+  },
+  {
+   "para": 1,
+   "sent": 2,
+   "text": "The report keeps both lead action levels on screen as context and never calls either one a safety verdict.",
+   "dur": 5.864,
+   "start": 31.325
+  },
+  {
+   "para": 2,
+   "sent": 0,
+   "text": "The Industrial corridor preset, a synthetic private well, shows why the mixture matters.",
+   "dur": 5.583,
+   "start": 37.938
+  },
+  {
+   "para": 2,
+   "sent": 1,
+   "text": "No single PFAS reading tops its own benchmark, yet four contributions sum to a Hazard Index of exactly 1.27, flagged above the limit of 1 beside the rule's one significant figure display.",
+   "dur": 12.45,
+   "start": 43.821
+  },
+  {
+   "para": 3,
+   "sent": 0,
+   "text": "After the storm, a boil advisory pairs with a microbial detection and nitrate at 13.6 milligrams per liter.",
+   "dur": 7.253,
+   "start": 57.022
+  },
+  {
+   "para": 3,
+   "sent": 1,
+   "text": "The guidance is bottled water first and the boil notice exactly as issued; the filter table warns a household filter is not an advisory fix.",
+   "dur": 8.22,
+   "start": 64.575
+  },
+  {
+   "para": 3,
+   "sent": 2,
+   "text": "Sliding evaporation to 20 percent turns 13.6 into 17, because boiling off water only concentrates what stays behind.",
+   "dur": 8.455,
+   "start": 73.095
+  },
+  {
+   "para": 4,
+   "sent": 0,
+   "text": "The mixture and sensitivity lab compares all four presets against every benchmark at once.",
+   "dur": 5.213,
+   "start": 82.3
+  },
+  {
+   "para": 4,
+   "sent": 1,
+   "text": "It draws the Hazard Index breakdown and the per-contaminant ratio chart, then runs its deterministic checks in the page.",
+   "dur": 6.545,
+   "start": 87.813
+  },
+  {
+   "para": 4,
+   "sent": 2,
+   "text": "All 32 in-page self-tests pass.",
+   "dur": 2.487,
+   "start": 94.658
+  },
+  {
+   "para": 4,
+   "sent": 3,
+   "text": "The audited brief stamps one SHA-256 digest across the on-page line and every export.",
+   "dur": 6.024,
+   "start": 97.445
+  },
+  {
+   "para": 5,
+   "sent": 0,
+   "text": "The SDG 6 lab grades the service ladder, the exceedance profile, and an illustrative water stress index for that same sample.",
+   "dur": 7.765,
+   "start": 104.219
+  },
+  {
+   "para": 5,
+   "sent": 1,
+   "text": "Five low-cost interventions are priced against the grant budget, and the planner recommends the best modeled reach.",
+   "dur": 6.143,
+   "start": 112.285
+  },
+  {
+   "para": 5,
+   "sent": 2,
+   "text": "A fit badge says plainly when an option covers the reported gaps, and an active advisory withholds every contaminant-fit claim.",
+   "dur": 7.288,
+   "start": 118.728
+  },
+  {
+   "para": 5,
+   "sent": 3,
+   "text": "On the impact chart every marker is focusable, and every label declutters itself instead of colliding.",
+   "dur": 5.684,
+   "start": 126.316
+  },
+  {
+   "para": 6,
+   "sent": 0,
+   "text": "One tap renders the whole lab in Spanish, indicators, planner and chart included.",
+   "dur": 5.052,
+   "start": 132.749
+  },
+  {
+   "para": 7,
+   "sent": 0,
+   "text": "The same recording run verified 695 of 695 Node tests, 56 of 56 headless audit checks, and zero honesty findings.",
+   "dur": 10.368,
+   "start": 138.552
+  },
+  {
+   "para": 7,
+   "sent": 1,
+   "text": "Everything shown was computed in the page during this drive, with zero network requests.",
+   "dur": 5.175,
+   "start": 149.22
+  },
+  {
+   "para": 7,
+   "sent": 2,
+   "text": "WaterWatch. Know what is in your tap.",
+   "dur": 2.394,
+   "start": 154.694
+  }
+ ]
+}
