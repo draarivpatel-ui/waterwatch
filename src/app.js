@@ -378,9 +378,9 @@ function renderTable(sample, screen) {
         el('span', { class: 'chem-name', text: result.label }),
         el('span', { class: 'chem-unit', text: result.unit }),
       ]),
-      el('td', { class: 'num' }, measured),
-      el('td', { text: REFERENCE_TEXT[result.id] }),
-      el('td', {}, finding),
+      el('td', { class: 'num', 'data-label': 'Measured' }, measured),
+      el('td', { 'data-label': 'Reference', text: REFERENCE_TEXT[result.id] }),
+      el('td', { 'data-label': 'Finding' }, finding),
     ]));
   }
 }
@@ -432,13 +432,19 @@ function renderMobileAction(view) {
   const box = $('mobile-action');
   if (!box) return;
   box.replaceChildren();
-  const show = view && ['co-occurrence', 'do-not-use', 'do-not-drink'].includes(view.screen.action);
-  box.hidden = !show;
-  if (!show) return;
+  box.hidden = !view;
+  if (!view) return;
+  // Narrow screens show the selected tap's verdict before the sample rail.
+  // Urgent actions keep only their first instruction; every other verdict
+  // keeps its whole body so its screening caveat is never cut.
   const spec = ACTIONS[view.screen.action];
+  const urgent = ['co-occurrence', 'do-not-use', 'do-not-drink'].includes(view.screen.action);
+  box.className = `mobile-action tone-${spec.cls}`;
   box.append(
+    mark(spec.icon),
+    el('span', { class: 'mobile-action-tap', text: view.sample.tap }),
     el('strong', { text: spec.en.title }),
-    el('p', { text: `${spec.en.body.split('. ')[0]}.` }),
+    el('p', { text: urgent ? `${spec.en.body.split('. ')[0]}.` : spec.en.body }),
     el('a', { href: '#report', text: 'Read the tap report' }),
   );
 }
@@ -525,7 +531,7 @@ function renderEvaporation() {
     'aria-label': 'Percentage of water boiled off',
   });
   const readout = el('p', { class: 'model-value' });
-  const table = el('table');
+  const table = el('table', { class: 'evap-table stack stack-3' });
   const tbody = el('tbody');
   table.append(el('thead', {}, el('tr', {}, [
     el('th', { scope: 'col', text: 'Contaminant' }),
@@ -543,15 +549,15 @@ function renderEvaporation() {
       const bench = meta.limit === null ? 'no individual benchmark' : `${meta.limit} ${meta.unit}`;
       tbody.append(el('tr', {}, [
         el('td', { text: meta.label }),
-        el('td', { class: 'num' }, [
+        el('td', { class: 'num', 'data-label': 'Measured' }, [
           document.createTextNode(view.sample.values[meta.id]),
           el('span', { class: 'unit', text: meta.unit }),
         ]),
-        el('td', { class: 'num' }, [
+        el('td', { class: 'num', 'data-label': 'Modeled' }, [
           document.createTextNode(fmt(modeled, 4)),
           el('span', { class: 'unit', text: meta.unit }),
         ]),
-        el('td', { text: bench }),
+        el('td', { 'data-label': 'Benchmark', text: bench }),
       ]));
     }
   };
@@ -767,7 +773,7 @@ function renderTreatment() {
       class: 'model-value',
       text: `Bottled drinking water at ${inputs.use.value} L/day costs about ${money(result.annualBottled)} per year.`,
     }));
-    const table = el('table');
+    const table = el('table', { class: 'treat-table stack stack-3' });
     const tbody = el('tbody');
     table.append(el('thead', {}, el('tr', {}, [
       el('th', { scope: 'col', text: 'Scenario' }),
@@ -783,11 +789,11 @@ function renderTreatment() {
         .map(id => `${LABELS[id]} ${fmt(view.sample.values[id], 4)} to ${fmt(filter.values[id], 4)} ${units[id] ?? ''} (${Math.round(filter.removal[id] * 100)}% assumed)`);
       tbody.append(el('tr', {}, [
         el('td', { text: filter.label }),
-        el('td', { class: 'num', text: money(filter.upfront) }),
-        el('td', { class: 'num', text: money(filter.annualOperating) }),
-        el('td', { class: 'num', text: money(filter.annualFirstYear) }),
-        el('td', { text: filter.paybackMonth === null ? 'never at these prices' : `month ${filter.paybackMonth}` }),
-        el('td', { text: modeled.length ? modeled.join('; ') : 'No reported readings covered by this scenario' }),
+        el('td', { class: 'num', 'data-label': 'Upfront', text: money(filter.upfront) }),
+        el('td', { class: 'num', 'data-label': 'Operating / yr', text: money(filter.annualOperating) }),
+        el('td', { class: 'num', 'data-label': 'First year', text: money(filter.annualFirstYear) }),
+        el('td', { class: 'wide', 'data-label': 'Crossover', text: filter.paybackMonth === null ? 'never at these prices' : `month ${filter.paybackMonth}` }),
+        el('td', { class: 'wide', 'data-label': 'Modeled reductions', text: modeled.length ? modeled.join('; ') : 'No reported readings covered by this scenario' }),
       ]));
     }
     out.append(el('div', { class: 'table-wrap' }, table), el('ul', { class: 'plain notes' }, [

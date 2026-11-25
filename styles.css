@@ -9,6 +9,7 @@
   --ink-faint: #496163;
   --hairline: rgba(16, 46, 49, 0.26);
   --hairline-soft: rgba(16, 46, 49, 0.14);
+  --control-line: #71817e;
   --teal: #07655e;
   --teal-wash: rgba(7, 101, 94, 0.07);
   --rust: #822b17;
@@ -77,6 +78,7 @@ a {
   color: var(--teal);
   text-underline-offset: 0.18em;
   text-decoration-thickness: 1px;
+  transition: color 0.15s ease;
 }
 
 a:hover {
@@ -192,6 +194,7 @@ a:hover {
   padding: 0.35rem 0.9rem;
   cursor: pointer;
   border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
 .preset-strip button + button {
@@ -274,9 +277,15 @@ input[type="number"] {
   line-height: 1.45;
   color: var(--ink);
   background: var(--paper-raised);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--control-line);
   border-radius: 3px;
   padding: 0.55rem 0.65rem;
+}
+
+textarea:hover,
+input[type="text"]:hover,
+input[type="number"]:hover {
+  border-color: var(--ink-faint);
 }
 
 textarea {
@@ -317,6 +326,7 @@ button,
   align-items: center;
   gap: 0.4rem;
   min-height: 2.5rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 button:hover,
@@ -335,7 +345,7 @@ button:disabled {
 button.secondary {
   background: none;
   color: var(--ink);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--control-line);
 }
 
 button.secondary:hover {
@@ -569,6 +579,18 @@ button.secondary:hover {
   margin-bottom: 0.8rem;
 }
 
+.table-wrap,
+.lab-table-wrap {
+  padding: 0.3rem;
+  margin-inline: -0.3rem;
+  margin-top: -0.3rem;
+  background:
+    linear-gradient(to right, var(--paper) 40%, rgba(246, 243, 233, 0)) left center / 1.6rem 100% no-repeat local,
+    linear-gradient(to left, var(--paper) 40%, rgba(246, 243, 233, 0)) right center / 1.6rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(16, 46, 49, 0.2), rgba(16, 46, 49, 0)) left center / 0.6rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(16, 46, 49, 0.2), rgba(16, 46, 49, 0)) right center / 0.6rem 100% no-repeat scroll;
+}
+
 table {
   border-collapse: collapse;
   width: 100%;
@@ -597,6 +619,11 @@ thead th {
 thead th.num,
 td.num {
   text-align: right;
+}
+
+thead th.num {
+  font-family: var(--sans);
+  white-space: normal;
 }
 
 tbody th,
@@ -650,6 +677,7 @@ td .unit {
 }
 
 .finding .mark {
+  flex: none;
   margin-top: 0.12rem;
 }
 
@@ -766,9 +794,17 @@ input[type="range"] {
   display: block;
 }
 
+.flush-chart text,
+.lab-chart text {
+  paint-order: stroke;
+  stroke: var(--paper);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
 .flush-chart text {
   font-family: var(--sans);
-  font-size: 10px;
+  font-size: 11px;
   fill: var(--ink-soft);
 }
 
@@ -851,7 +887,7 @@ input[type="range"] {
 .lab-chip {
   appearance: none;
   background: none;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--control-line);
   border-radius: 999px;
   color: var(--ink);
   font-family: var(--sans);
@@ -862,6 +898,7 @@ input[type="range"] {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .lab-chip:hover {
@@ -948,7 +985,7 @@ input[type="range"] {
 
 .lab-chart text {
   font-family: var(--sans);
-  font-size: 10px;
+  font-size: 11px;
   fill: var(--ink-soft);
 }
 
@@ -968,7 +1005,7 @@ input[type="range"] {
 }
 
 .lab-chart .seg-2 {
-  fill: #3a8279;
+  fill: #2f746b;
 }
 
 .lab-chart .seg-3 {
@@ -979,8 +1016,16 @@ input[type="range"] {
   fill: #b8cfc5;
 }
 
-.lab-chart .seg text.seg-label {
-  fill: var(--paper);
+/* Labels drawn inside hazard-index segments: no halo, ink chosen per segment */
+.lab-chart .seg + .seg-label {
+  stroke: none;
+  fill: var(--ink);
+  font-weight: 600;
+}
+
+.lab-chart .seg-1 + .seg-label,
+.lab-chart .seg-2 + .seg-label {
+  fill: #ffffff;
 }
 
 .lab-chart .seg-missing {
@@ -1072,10 +1117,14 @@ td.lab-blocked {
   font-size: 0.88rem;
   padding: 0.45rem 0.55rem;
   background: var(--paper-raised);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--control-line);
   border-radius: 3px;
   color: var(--ink);
   width: 100%;
+}
+
+.lab-tap-field {
+  margin-bottom: 1.25rem;
 }
 
 .lab-exports {
@@ -1802,13 +1851,28 @@ input[type="text"].lab-link {
   }
 
   .print-sheet .ps-cols {
-    column-count: 2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: 18pt;
-    column-rule: 0.5pt solid #999;
   }
 
   .print-sheet .ps-lang {
     break-inside: avoid;
+  }
+
+  .print-sheet .ps-lang + .ps-lang {
+    border-left: 0.5pt solid #999;
+    padding-left: 18pt;
+    margin-left: -9pt;
+  }
+
+  .print-sheet .ps-lang > h2:first-child {
+    margin-top: 0;
+  }
+
+  .print-sheet thead th,
+  .print-sheet thead th.num {
+    font-family: var(--sans);
   }
 
   .print-sheet .ps-meta {
@@ -1825,29 +1889,101 @@ input[type="text"].lab-link {
 @media (max-width: 58rem) {
   .substrate {
     grid-template-columns: minmax(0, 1fr);
+    padding-top: 1.1rem;
   }
 
+  /* The verdict for the selected tap, shown above the sample rail on narrow screens */
   .mobile-action:not([hidden]) {
-    display: block;
-    margin: 0.75rem 0 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 0.6rem;
+    margin: 0.9rem 0 0;
     border: 1px solid var(--rust);
+    border-left-width: 4px;
+    border-radius: 4px;
     background: var(--rust-wash);
-    padding: 0.7rem;
+    padding: 0.75rem 0.85rem 0.8rem;
     font-size: 0.9rem;
   }
 
+  .mobile-action > * {
+    grid-column: 2;
+  }
+
+  .mobile-action .mark {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    margin-top: 0.2rem;
+    color: var(--rust);
+  }
+
+  .mobile-action .mobile-action-tap {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-action strong {
+    font-family: var(--serif);
+    font-size: 1.05rem;
+    line-height: 1.3;
+    color: var(--rust);
+  }
+
   .mobile-action p {
-    margin: 0.3rem 0;
+    margin: 0.3rem 0 0.4rem;
   }
 
   .mobile-action a {
     font-weight: 600;
+    justify-self: start;
+    padding: 0.15rem 0;
   }
 
+  .mobile-action.tone-clear {
+    border-color: var(--teal);
+    background: var(--teal-wash);
+  }
+
+  .mobile-action.tone-clear strong,
+  .mobile-action.tone-clear .mark {
+    color: var(--teal);
+  }
+
+  .mobile-action.tone-pending {
+    border-color: var(--control-line);
+    background: var(--paper-raised);
+  }
+
+  .mobile-action.tone-pending strong,
+  .mobile-action.tone-pending .mark {
+    color: var(--ink);
+  }
+
+  /* Title stands alone; the section links and the offline status share the row below it */
   .masthead {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 0.6rem;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 1.1rem 0 0.7rem;
+  }
+
+  .masthead-side {
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+
+  .masthead nav {
+    gap: 0.1rem 0.95rem;
+  }
+
+  .masthead nav a {
+    padding: 0.3rem 0;
+  }
+
+  .offline-pill {
+    order: 2;
   }
 
   .preset-strip {
@@ -1867,12 +2003,151 @@ input[type="text"].lab-link {
   }
 }
 
+/* Tablet: sample source beside the tap list */
+@media (min-width: 40.01rem) and (max-width: 58rem) {
+  .rail {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    column-gap: 2rem;
+    align-items: start;
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 0.4rem;
+  }
+
+  .rail {
+    grid-template-rows: auto 1fr;
+  }
+
+  .rail-block:first-child {
+    grid-row: 1 / span 2;
+  }
+
+  .rail-block:nth-child(2) {
+    border-top: none;
+    padding-top: 0;
+  }
+
+  .rail textarea {
+    min-height: 9.5rem;
+  }
+}
+
+/* Phones: tables restack into labeled rows, chart type scales up */
+@media (max-width: 40rem) {
+  body {
+    padding-inline: 1rem;
+  }
+
+  .masthead h1 {
+    font-size: 2rem;
+  }
+
+  .rail textarea {
+    min-height: 7rem;
+  }
+
+  table.stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  table.stack,
+  table.stack tbody {
+    display: block;
+  }
+
+  table.stack tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.3rem 0.9rem;
+    padding: 0.7rem 0;
+    border-bottom: 1px solid var(--hairline-soft);
+  }
+
+  table.stack tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  table.stack tbody th,
+  table.stack tbody td {
+    display: block;
+    padding: 0;
+    border: none;
+    text-align: left;
+  }
+
+  table.stack tbody td.num {
+    text-align: right;
+  }
+
+  table.stack td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-family: var(--sans);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--ink-faint);
+    white-space: normal;
+  }
+
+  table.stack .wide {
+    grid-column: 1 / -1;
+  }
+
+  table.stack caption {
+    display: block;
+  }
+
+  /* Screen report: name and reading on one line, reference beside the finding below */
+  #results-table tbody tr {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #results-table tbody td.num::before {
+    display: none;
+  }
+
+  /* Evaporation and filter tables: a name row, then three labeled figures */
+  table.stack-3 tbody tr {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  table.stack-3 tbody td:first-child {
+    grid-column: 1 / -1;
+    font-weight: 600;
+  }
+
+  table.stack-3 tbody td.num {
+    text-align: left;
+  }
+
+  table.stack-3 td .unit {
+    margin-left: 0.2rem;
+  }
+
+  .flush-chart text,
+  .lab-chart text {
+    font-size: 16px;
+  }
+
+  .lab-chart .seg + .seg-label {
+    font-size: 13px;
+  }
+}
+
+/* Reduced motion: kept last, and scoped to outrank every base transition rule */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :root body *,
+  :root body *::before,
+  :root body *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
   }
 }
