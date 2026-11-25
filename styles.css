@@ -953,7 +953,7 @@ input[type="range"] {
 
 .lab-table-wrap {
   margin-bottom: 1rem;
-  max-width: 100%;
+  max-width: calc(100% + 0.6rem);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -1568,6 +1568,7 @@ input[type="text"].lab-link {
 .sdg6-chart text {
   font-size: 11px;
   pointer-events: none;
+  stroke: var(--paper-raised);
 }
 
 .sdg6-chart .seg-label {
@@ -2130,7 +2131,7 @@ input[type="text"].lab-link {
   }
 
   .flush-chart text,
-  .lab-chart text {
+  .lab-chart:not(.sdg6-chart) text {
     font-size: 16px;
   }
 

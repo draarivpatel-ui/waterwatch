@@ -1019,6 +1019,14 @@ export function mountLab(root, hooks = {}) {
     svg.append(svgEl('line', {
       x1: ML, y1: MT + BAR, x2: W - MR, y2: MT + BAR, class: 'axis',
     }));
+    // The HI = 1 line is drawn before the segments: where the index passes
+    // 1 the bar covers it, leaving ticks above and below so it never runs
+    // through a segment label.
+    const lx = x(1);
+    svg.append(svgEl('line', { x1: lx, y1: MT - 6, x2: lx, y2: MT + BAR + 10, class: 'limit-line' }));
+    const lt = svgEl('text', { x: lx, y: MT - 12, 'text-anchor': 'middle' });
+    lt.textContent = t.hiLine;
+    svg.append(lt);
     const names = { pfhxs: 'PFHxS', pfna: 'PFNA', genx: 'GenX', pfbs: 'PFBS' };
     let offset = 0;
     let missingOffset = 0;
@@ -1055,11 +1063,6 @@ export function mountLab(root, hooks = {}) {
       offset += q;
       svg.append(g);
     }
-    const lx = x(1);
-    svg.append(svgEl('line', { x1: lx, y1: MT - 6, x2: lx, y2: MT + BAR + 10, class: 'limit-line' }));
-    const lt = svgEl('text', { x: lx, y: MT - 12, 'text-anchor': 'middle' });
-    lt.textContent = t.hiLine;
-    svg.append(lt);
     const total = svgEl('text', { x: W - MR, y: MT + BAR + 24, 'text-anchor': 'end', class: 'seg-total' });
     total.textContent = `${t.colHI}: ${summary.mixture.raw ?? 'n/a'} (${statusWord(summary.mixture.status)})`;
     svg.append(total);
