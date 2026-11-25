@@ -884,10 +884,12 @@ input[type="range"] {
   color: var(--teal);
   font-weight: 600;
   font-size: inherit;
-  padding: 0;
-  min-height: 0;
+  padding: 0.12rem 0;
+  min-height: 1.5rem;
   cursor: pointer;
   text-align: left;
+  display: inline-flex;
+  align-items: center;
 }
 
 .lab-pick:hover {
@@ -905,7 +907,7 @@ input[type="range"] {
   display: block;
   font-weight: 400;
   color: var(--ink-faint);
-  font-size: 0.74rem;
+  font-size: 0.75rem;
 }
 
 .lab-table {
@@ -914,6 +916,9 @@ input[type="range"] {
 
 .lab-table-wrap {
   margin-bottom: 1rem;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .lab-active th,
@@ -1083,7 +1088,7 @@ td.lab-blocked {
   padding: 0.6rem 0.8rem;
   background: var(--paper-raised);
   border: 1px solid var(--hairline);
-  border-left: 3px solid var(--teal);
+  border-left: 1px solid var(--teal);
   border-radius: 4px;
   color: var(--ink);
   font-size: 0.76rem;
@@ -1161,7 +1166,7 @@ input[type="text"].lab-link {
 .sdg6-card {
   border: 1px solid var(--hairline);
   border-top: 4px solid var(--ink-faint);
-  border-radius: 4px;
+  border-radius: 0;
   padding: 0.75rem 0.9rem 0.8rem;
   background: var(--paper-raised);
   min-width: 0;
@@ -1287,12 +1292,12 @@ input[type="text"].lab-link {
 }
 
 .sdg6-plan .lab-origin {
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   margin-top: 0.1rem;
 }
 
 .sdg6-pick {
-  display: inline;
+  display: inline-flex;
 }
 
 .sdg6-plan .lab-active th,
@@ -1412,7 +1417,7 @@ input[type="text"].lab-link {
   padding: 0.9rem 1rem 0.75rem;
   background: var(--sdg-mineral);
   border: 1px solid var(--hairline-soft);
-  border-left: 4px solid var(--teal);
+  border-left: 1px solid var(--teal);
   border-radius: 4px;
 }
 
@@ -1590,7 +1595,7 @@ input[type="text"].lab-link {
 .sdg6-focus {
   margin-top: 0.3rem;
   padding: 0.55rem 0.8rem;
-  border-left: 3px solid var(--sdg-cerulean);
+  border-left: 1px solid var(--sdg-cerulean);
   background: rgba(28, 79, 116, 0.06);
   max-width: none;
 }
