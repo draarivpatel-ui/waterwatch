@@ -68,7 +68,7 @@ function b64urlDecode(text) {
 export const LAB_PRESETS = Object.freeze(['school', 'well', 'storm', 'baseline', 'imported']);
 export const LAB_SCENARIOS = Object.freeze(['baseline', 'flush', 'carbon', 'ro']);
 export const LAB_LANGS = Object.freeze(['en', 'es']);
-const STATE_KEYS = new Set(['preset', 'scenario', 'lang', 'focus', 'sdg']);
+const STATE_KEYS = new Set(['preset', 'scenario', 'lang', 'focus', 'tap', 'sdg']);
 const DEFAULT_STATE = Object.freeze({ preset: 'school', scenario: 'baseline', lang: 'en', focus: null });
 const FOCUS_IDS = new Set([...CHEMICALS.map(({ id }) => id), 'hazard-index']);
 
@@ -93,6 +93,10 @@ export function normalizeLabState(input) {
   if (has(input, 'focus')) {
     if (input.focus !== null && (typeof input.focus !== 'string' || !FOCUS_IDS.has(input.focus))) return null;
     state.focus = input.focus;
+  }
+  if (has(input, 'tap')) {
+    if (typeof input.tap !== 'number' || !Number.isInteger(input.tap) || input.tap < 0 || input.tap > 499) return null;
+    state.tap = input.tap;
   }
   if (has(input, 'sdg')) {
     const sdg = normalizeSdg6State(input.sdg);
@@ -819,7 +823,7 @@ export function mountLab(root, hooks = {}) {
   const getImported = typeof hooks.getImported === 'function' ? hooks.getImported : () => null;
   const initial = decodeLabHash(globalThis.location?.hash ?? '') ?? { ...DEFAULT_STATE };
   const lab = {
-    ...initial, tapIndex: 0, verifyNote: null, tests: null, link: '',
+    ...initial, tapIndex: initial.tap ?? 0, verifyNote: null, tests: null, link: '',
     sdg: initial.sdg ?? { ...SDG6_DEFAULT_STATE },
   };
 
@@ -831,7 +835,7 @@ export function mountLab(root, hooks = {}) {
     const href = globalThis.location?.href?.split('#')[0] ?? '';
     return `${href}#${encodeLabHash({
       preset: lab.preset, scenario: lab.scenario, lang: lab.lang, focus: lab.focus,
-      sdg: lab.sdg,
+      tap: lab.tapIndex, sdg: lab.sdg,
     })}`;
   };
 
@@ -1161,7 +1165,7 @@ export function mountLab(root, hooks = {}) {
 
   function currentBrief(view, matrix) {
     return labBrief({
-      state: { preset: lab.preset, scenario: lab.scenario, lang: lab.lang, focus: lab.focus, sdg: lab.sdg },
+      state: { preset: lab.preset, scenario: lab.scenario, lang: lab.lang, focus: lab.focus, tap: lab.tapIndex, sdg: lab.sdg },
       comparator: datasets(),
       matrix,
       sdg6: view ? sdg6Payload({

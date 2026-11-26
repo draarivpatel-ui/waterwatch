@@ -553,6 +553,17 @@ async function capture() {
 
 // ---------- check -----------------------------------------------------------
 
+function frameRateNumber(value) {
+  if (typeof value !== 'string') return NaN;
+  const rational = value.match(/^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
+  if (rational) {
+    const denominator = Number(rational[2]);
+    return denominator === 0 ? NaN : Number(rational[1]) / denominator;
+  }
+  const plain = Number(value);
+  return Number.isFinite(plain) ? plain : NaN;
+}
+
 async function check() {
   const { stdout } = await run('ffprobe', ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', OUT_MP4]);
   const d = JSON.parse(stdout);
@@ -560,7 +571,8 @@ async function check() {
   const a = d.streams.find((s) => s.codec_type === 'audio');
   const { stdout: vol } = await run('ffmpeg', ['-i', OUT_MP4, '-af', 'volumedetect', '-f', 'null', '-'], { timeout: 120000 })
     .then((r) => ({ stdout: `${r.stdout}${r.stderr}` }), (e) => ({ stdout: `${e.stdout || ''}${e.stderr || ''}` }));
-  console.log(`video: ${v.codec_name} ${v.width}x${v.height} ${eval(v.r_frame_rate).toFixed(0)}fps pix=${v.pix_fmt} range=${v.color_range || 'unknown'}`);
+  const fps = frameRateNumber(v.r_frame_rate);
+  console.log(`video: ${v.codec_name} ${v.width}x${v.height} ${Number.isFinite(fps) ? fps.toFixed(0) : 'unknown'}fps pix=${v.pix_fmt} range=${v.color_range || 'unknown'}`);
   console.log(`audio: ${a.codec_name} ${a.sample_rate}Hz ${a.channels}ch`);
   console.log(`duration: ${d.format.duration}s size: ${(d.format.size / 1e6).toFixed(1)}MB`);
   const mv = (vol.match(/mean_volume:\s*([-\d.]+ dB)/) || [])[1];

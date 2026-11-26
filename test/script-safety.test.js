@@ -258,3 +258,9 @@ test('injected TAP summary lines cannot hide a skipped test', () => {
   assert.ok(problems.includes('pass 1 does not equal tests 2'));
   assert.ok(problems.includes('skipped 1 is not zero'));
 });
+
+test('demo ffprobe frame-rate reporting never evaluates stream-controlled text', () => {
+  const source = readFileSync(path.join(import.meta.dirname, '..', 'scripts', 'record-demo.mjs'), 'utf8');
+  assert.equal(/\beval\s*\(/.test(source), false);
+  assert.match(source, /function frameRateNumber\(value\)/);
+});

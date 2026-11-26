@@ -102,6 +102,20 @@ for (const hostile of [
   });
 }
 
+test('hash round trip preserves the selected matrix tap within the 500 row import bound', () => {
+  const state = { preset: 'imported', scenario: 'carbon', lang: 'es', focus: 'lead', tap: 3 };
+  assert.deepEqual(decodeLabHash(encodeLabHash(state)), state);
+  assert.deepEqual(decodeLabHash(`#${encodeLabHash(state)}`), state);
+});
+
+for (const bad of [-1, 1.5, 500, Number.NaN, Infinity, '2', null, true]) {
+  test(`tap index ${String(bad)} fails closed`, () => {
+    assert.equal(normalizeLabState({ tap: bad }), null);
+    const encoded = Buffer.from(JSON.stringify({ tap: bad })).toString('base64url');
+    assert.equal(decodeLabHash(`ww=${encoded}`), null);
+  });
+}
+
 test('hash with padded base64 is rejected rather than silently accepted', () => {
   const body = encodeLabHash({ preset: 'school' }).slice(3);
   assert.equal(decodeLabHash(`ww=${body}=`), null);
