@@ -81,7 +81,7 @@ for (const [values, exact, status, rounded, roundedStatus] of [
   [mixture('3', '3', '3', '200.2'), '1.0001', 'above', '1', 'at'],
   [mixture('3', '3', '3', '200.000000000001'), '1.0000000000000005', 'above', '1', 'at'],
   [mixture('3', '3', '3', '199.999999999999'), '0.9999999999999995', 'below', '1', 'at'],
-  [mixture('0', '2', '2', '0'), '0.4', 'below', '0.4', 'below'],
+  [mixture('0', '2', '2', '0'), '0.4', 'not-applicable', null, null],
   [mixture('3', '3', '3', '99.999999999999'), '0.9499999999999995', 'below', '0.9', 'below'],
   [mixture('3', '3', '3', '100'), '0.95', 'below', '1', 'at'],
   [mixture('4', '4', '4', '599.999999999999'), '1.4999999999999995', 'above', '1', 'at'],
@@ -108,13 +108,15 @@ for (const [values, exact, status, rounded, roundedStatus] of [
 test('mixture returns every quotient and denominators without including PFOA or PFOS', () => {
   const screened = hi({ pfoa: '99', pfos: '99', ...mixture('2.7', '5.4', null, '20') });
   assert.deepEqual(screened.terms, [
-    { id: 'pfhxs', denominator: '10', quotient: '0.27' },
-    { id: 'pfna', denominator: '10', quotient: '0.54' },
-    { id: 'genx', denominator: '10', quotient: null },
-    { id: 'pfbs', denominator: '2000', quotient: '0.01' },
+    { id: 'pfhxs', denominator: '10', pql: '3.0', quotient: '0.27', quantified: false },
+    { id: 'pfna', denominator: '10', pql: '4.0', quotient: '0.54', quantified: true },
+    { id: 'genx', denominator: '10', pql: '5.0', quotient: null, quantified: false },
+    { id: 'pfbs', denominator: '2000', pql: '3.0', quotient: '0.01', quantified: true },
   ]);
   assert.deepEqual(screened.missing, ['genx']);
   assert.equal(screened.positives, 3);
+  assert.equal(screened.quantified, 2);
+  assert.equal(screened.epaMixture, true);
 });
 
 test('PFBS has no individual maximum contaminant level', () => {
@@ -154,7 +156,7 @@ for (const [notice, ecoli, values, expected] of [
   ['boil', 'present', complete, 'boil'],
   ['boil', 'absent', {}, 'boil'],
   ['boil', 'unknown', { nitrate: '11' }, 'co-occurrence'],
-  ['boil', 'present', { ...complete, nitrate: '10' }, 'boil'],
+  ['boil', 'present', { ...complete, nitrate: '10' }, 'co-occurrence'],
   ['boil', 'present', mixture('6', '5', '0', null), 'co-occurrence'],
   ['boil', 'absent', mixture('6', '5', '0', '0'), 'co-occurrence'],
   ['none', 'present', { arsenic: '10.001' }, 'co-occurrence'],
@@ -171,6 +173,22 @@ for (const [notice, ecoli, values, expected] of [
     assert.equal(screenSample(input(values, notice, ecoli)).action, expected);
   });
 }
+
+test('exactly 10 mg/L nitrate with boil advisory and E. coli blocks boiled-formula advice', () => {
+  const screened = screenSample(input({ nitrate: '10.0' }, 'boil', 'present'));
+  assert.equal(screened.results.find(row => row.id === 'nitrate').status, 'at');
+  assert.deepEqual(screened.chemicals, []);
+  assert.equal(screened.action, 'co-occurrence');
+});
+
+test('quantitation levels decide EPA mixture eligibility at exact boundaries', () => {
+  const exact = hi(mixture('3.0', '4.0', '5.0', '3.0'));
+  assert.equal(exact.quantified, 4);
+  assert.equal(exact.epaMixture, true);
+  const justBelow = hi(mixture('2.999999999999', '3.999999999999', '4.999999999999', '2.999999999999'));
+  assert.equal(justBelow.quantified, 0);
+  assert.equal(justBelow.epaMixture, false);
+});
 
 test('unknown fields do not become zero or disappear from the safety report', () => {
   const screened = screenSample({ tap: 'T', values: { lead: '0' } });

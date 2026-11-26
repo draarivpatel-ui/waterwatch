@@ -314,11 +314,31 @@ try {
     check('print sheet has EN and ES blocks', await evaluate(
       `document.querySelector('#print-sheet [lang="en"] p.ps-headline')?.textContent.length > 0 && document.querySelector('#print-sheet [lang="es"] p.ps-headline')?.textContent.length > 0`));
     check('print sheet is a field audit with readings, sources, and record', await evaluate(
-      `document.querySelector('#print-sheet h1').textContent === 'Community Water Field Audit Sheet' && document.querySelectorAll('#print-sheet .ps-table tbody tr').length === 10 && document.querySelectorAll('#print-sheet .ps-diag li').length >= 1 && document.querySelectorAll('#print-sheet .ps-field').length === 4`));
+      `document.querySelector('#print-sheet h1').textContent.includes('Community Water Field Audit Sheet') && document.querySelector('#print-sheet h1 [lang="es"]')?.textContent.includes('Hoja comunitaria') && document.querySelectorAll('#print-sheet .ps-table tbody tr').length === 10 && document.querySelectorAll('#print-sheet .ps-diag li').length >= 1 && document.querySelectorAll('#print-sheet .ps-field').length === 4`));
     check('print sheet WHO cells carry units', await evaluate(
-      `document.querySelector('#print-sheet .ps-table tbody tr td:last-child').textContent.includes('ppb') && [...document.querySelectorAll('#print-sheet .ps-table tbody tr')][2].querySelector('td:last-child').textContent.includes('mg/L as NO3')`));
+      `document.querySelector('#print-sheet .ps-table tbody tr td:last-child').textContent.includes('ppb') && [...document.querySelectorAll('#print-sheet .ps-table tbody tr')][2].querySelector('td:last-child').textContent.includes('mg/L as nitrate')`));
     check('print sheet marks synthetic preset', await evaluate(
       `document.querySelector('#print-sheet').textContent.includes('Synthetic example / Ejemplo sintético')`));
+
+    // Keyboard activation keeps focus on the activated SVG chart row.
+    await evaluate(`document.querySelector('[data-focus-control="ratio-lead"]').focus()`);
+    await cmd('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 });
+    await cmd('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 });
+    check('keyboard Space keeps focus on the activated Lead chart row', await evaluate(
+      `document.activeElement?.getAttribute('data-focus-control') === 'ratio-lead' && document.activeElement?.getAttribute('aria-pressed') === 'true' && document.activeElement?.getAttribute('role') === 'button'`),
+      await evaluate(`document.activeElement?.getAttribute('data-focus-control') ?? document.activeElement?.tagName`));
+    check('Copper is the next chart row after Lead', await evaluate(
+      `document.querySelector('[data-focus-control="ratio-lead"]').nextElementSibling?.getAttribute('data-focus-control') === 'ratio-copper'`));
+
+    // Spanish mode localizes the diagnostic instead of silently falling back to English.
+    await click('#lab-lang-es');
+    check('Spanish diagnostic heading and cards carry lang=es', await waitFor(
+      `document.querySelector('#diagnostic h3')?.getAttribute('lang') === 'es' && document.querySelector('#diagnostic h3')?.textContent === 'Fuentes probables y pasos de campo' && [...document.querySelectorAll('#diagnostic .diag')].every(node => node.getAttribute('lang') === 'es')`));
+    check('Spanish diagnostic has zero English fallback strings', await evaluate(
+      `!/(Likely sources and field steps|Lead points to plumbing near this tap|Share the pair with the water system|Common sources)/.test(document.querySelector('#diagnostic').textContent)`));
+    check('lab and SDG headings carry lang=es', await evaluate(
+      `document.querySelector('#lab-h')?.getAttribute('lang') === 'es' && document.querySelector('#sdg6-h')?.getAttribute('lang') === 'es'`));
+    await click('#lab-lang-en');
 
     await evaluate('window.scrollTo(0,0)');
     const shot = await cmd('Page.captureScreenshot', { format: 'png' });
@@ -354,6 +374,25 @@ try {
     await writeFile(join(ROOT, 'docs', 'advisory.png'), mpng);
     const ms = pngSize(mpng);
     check('mobile screenshot 390x844', ms.width === 390 && ms.height === 844, `${ms.width}x${ms.height}`);
+
+    // Third viewport: tablet width stays inside its layout box.
+    await cmd('Emulation.setDeviceMetricsOverride', { width: 768, height: 1024, deviceScaleFactor: 1, mobile: true });
+    await sleep(250);
+    check('no horizontal overflow at 768', await evaluate(`document.documentElement.scrollWidth <= 768`),
+      await evaluate(`String(document.documentElement.scrollWidth)`));
+
+    // Stress case: a valid 100-character tap name and long decimal readings.
+    const stressCsv = `tap,advisory,ecoli,lead_ppb,copper_ppb,nitrate_mg_l_as_n,arsenic_ppb,pfoa_ppt,pfos_ppt,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt,pair_id,draw_type\n${'A'.repeat(100)},none,absent,12.345678901234,1300.000000000001,9.999999999999,10.000000000001,4.000000000001,4.000000000001,10.000000000001,10.000000000001,10.000000000001,2000.000000000001,stress,first-draw`;
+    await evaluate(`document.querySelector('#csv-input').value = ${JSON.stringify(stressCsv)}; document.querySelector('#apply').click()`);
+    check('100-character stress report applies', await waitFor(
+      `document.querySelector('#results-caption')?.textContent.includes('${'A'.repeat(40)}') && document.querySelectorAll('#print-sheet .ps-table tbody tr').length === 10`));
+    const stressPdfEn = Buffer.from((await cmd('Page.printToPDF', { printBackground: true })).data, 'base64');
+    check('100-character tap stress sheet prints one page in English', pdfPages(stressPdfEn) === 1, `pages=${pdfPages(stressPdfEn)}`);
+    await click('#lab-lang-es');
+    await waitFor(`document.querySelector('#diagnostic h3')?.getAttribute('lang') === 'es'`);
+    const stressPdfEs = Buffer.from((await cmd('Page.printToPDF', { printBackground: true })).data, 'base64');
+    check('100-character tap stress sheet prints one page in Spanish', pdfPages(stressPdfEs) === 1, `pages=${pdfPages(stressPdfEs)}`);
+    await click('#lab-lang-en');
 
     check('zero console errors', consoleErrors.length === 0, consoleErrors.join(' | '));
     check('zero page errors', pageErrors.length === 0, pageErrors.join(' | '));

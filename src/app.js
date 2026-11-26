@@ -19,6 +19,7 @@ const state = {
   stale: false,
   shortcuts: false,
   synthetic: false,
+  lang: 'en',
 };
 let importRequest = 0;
 let labController = null;
@@ -45,8 +46,8 @@ const SOURCES = [
     'https://www.cdc.gov/breastfeeding/php/guidelines-recommendations/feeding-your-child-safely-during-a-disaster.html'],
   ['EPA, identifying filters certified to reduce PFAS',
     'https://www.epa.gov/water-research/identifying-drinking-water-filters-certified-reduce-pfas'],
-  ['WHO, Guidelines for drinking-water quality (4th edition with first and second addenda, 2022)',
-    'https://www.who.int/publications/i/item/9789240045064'],
+  ['WHO, Guidelines for drinking-water quality (4th edition with first, second and third addenda, 2026)',
+    'https://www.who.int/publications/i/item/9789240121225'],
 ];
 
 const ACTIONS = {
@@ -345,7 +346,7 @@ function renderAction(screen) {
 }
 
 const REFERENCE_TEXT = {
-  lead: '10 ppb action level (LCRI)',
+  lead: '10 ppb LCRI action level from November 1, 2027; 15 ppb current system action level; neither is a safe-exposure threshold',
   copper: '1300 ppb action level',
   nitrate: '10 mg/L as N MCL',
   arsenic: '10 ppb MCL',
@@ -494,17 +495,24 @@ function renderDiagnostic(view) {
   const box = $('diagnostic');
   box.replaceChildren();
   if (!view) return;
+  const es = state.lang === 'es';
   const findings = diagnose({ samples: state.samples, screens: state.screens, active: state.active });
-  box.append(el('h3', { text: 'Likely sources and field steps' }));
+  box.append(el('h3', {
+    lang: state.lang,
+    text: es ? 'Fuentes probables y pasos de campo' : 'Likely sources and field steps',
+  }));
   const list = el('ol', { class: 'diag-list' });
   for (const finding of findings) {
-    list.append(el('li', { class: `diag diag-${finding.tone}`, 'data-diag': finding.id }, [
+    list.append(el('li', { class: `diag diag-${finding.tone}`, 'data-diag': finding.id, lang: state.lang }, [
       mark(DIAG_ICON[finding.tone]),
       el('div', { class: 'diag-body' }, [
-        el('p', { class: 'diag-title', text: finding.title }),
-        el('p', { class: 'diag-evidence', text: finding.evidence }),
-        el('p', { class: 'diag-action', text: finding.action }),
-        finding.cite ? el('p', { class: 'diag-cite', text: `Common sources (${finding.cite.cite}): ${finding.cite.text}` }) : null,
+        el('p', { class: 'diag-title', text: es ? finding.titleEs : finding.title }),
+        el('p', { class: 'diag-evidence', text: es ? finding.evidenceEs : finding.evidence }),
+        el('p', { class: 'diag-action', text: es ? finding.actionEs : finding.action }),
+        finding.cite ? el('p', {
+          class: 'diag-cite',
+          text: es ? `Fuentes comunes (${finding.cite.citeEs}): ${finding.cite.textEs}` : `Common sources (${finding.cite.cite}): ${finding.cite.text}`,
+        }) : null,
       ]),
     ]));
   }
@@ -516,7 +524,7 @@ function renderNotes(sample, screen) {
   notes.replaceChildren();
   const parts = [];
   if (screen.legacyLead !== 'missing') {
-    parts.push(`Against the legacy 15 ppb 90th-percentile system action level, this lead reading is ${screen.legacyLead}. The Lead and Copper Rule Improvements set a 10 ppb action level with a November 1, 2027 compliance date, and there is no known safe level of lead exposure.`);
+    parts.push(`The current federal lead action level is 15 ppb for a public system's 90th percentile; EPA LCRI uses 10 ppb beginning November 1, 2027. This reading is ${screen.legacyLead} against 15 ppb. Neither action level is a safe-exposure threshold, and there is no known safe level of lead exposure.`);
   }
   if (screen.unknowns.length) {
     parts.push(`Unreported for this tap: ${screen.unknowns.map(id => UNKNOWN_NAMES[id] ?? id).join(', ')}.`);
@@ -605,7 +613,7 @@ function renderMixture() {
   const status = el('p', { class: 'hi-total' });
   const markFor = s => mark(s === 'above' || s === 'above-lower-bound' ? 'mark-above' : s === 'at' ? 'mark-at' : 'mark-below');
   if (hi.status === 'not-applicable') {
-    status.append(mark('mark-scope'), document.createTextNode(' Fewer than two constituents were reported above zero, so the mixture benchmark does not apply.'));
+    status.append(mark('mark-scope'), document.createTextNode(' Fewer than two constituents are at or above their practical quantitation levels, so the EPA multi-constituent mixture benchmark does not apply.'));
     status.classList.add('status-neutral');
   } else if (hi.status === 'incomplete') {
     status.append(mark('mark-missing'), document.createTextNode(hi.raw === null
@@ -613,10 +621,15 @@ function renderMixture() {
       : ` Partial sum ${hi.raw}; unreported constituents keep the index incomplete.`));
     status.classList.add('status-neutral');
   } else if (hi.status === 'above-lower-bound') {
-    status.append(markFor(hi.status), document.createTextNode(` Partial sum ${hi.raw} is already above 1, and constituents are still unreported.`));
+    status.append(markFor(hi.status), document.createTextNode(hi.epaMixture
+      ? ` Partial sum ${hi.raw} is already above 1 for the quantified multi-constituent mixture, and constituents are still unreported.`
+      : ` Partial screening sum ${hi.raw} is already above 1, but fewer than two constituents are quantified, so this is not the EPA multi-constituent mixture.`));
     status.classList.add('status-above');
   } else {
-    status.append(markFor(hi.status), document.createTextNode(` Hazard Index ${hi.raw} is ${hi.status} the benchmark of 1.`));
+    const singleScreen = hi.status === 'above' && !hi.epaMixture;
+    status.append(markFor(hi.status), document.createTextNode(singleScreen
+      ? ` Screening sum ${hi.raw} is above 1. Fewer than two constituents are at or above their practical quantitation levels, so this is a single-compound screening signal, not the EPA multi-constituent mixture.`
+      : ` Hazard Index ${hi.raw} is ${hi.status} the benchmark of 1.`));
     status.classList.add(`status-${hi.status}`);
     if (hi.rounded) {
       status.append(el('span', {
@@ -634,7 +647,7 @@ function renderMixture() {
   }
   body.append(el('p', {
     class: 'notes',
-    text: 'The index covers PFHxS, PFNA, GenX (HFPO-DA), and PFBS. The mixture benchmark needs at least two positive constituents; this screen still flags any summed index above 1. PFBS alone is not an MCL.',
+    text: 'The index covers PFHxS, PFNA, GenX (HFPO-DA), and PFBS. EPA\'s multi-constituent mixture applies only when at least two are at or above their practical quantitation levels; this screen still flags any exact summed index above 1 as a screening signal. PFBS alone is not an MCL.',
   }));
 }
 
@@ -1012,9 +1025,38 @@ const ECOLI_BI = { present: 'present / presente', absent: 'absent / ausente', un
 const UNKNOWN_BI = { advisory: 'advisory / aviso', ecoli: 'E. coli / E. coli' };
 
 const STATUS_BI = {
-  above: 'above / por encima', at: 'at / en el nivel', below: 'below / por debajo',
-  missing: 'not reported / no reportado', 'no-limit': 'in index / en el índice',
+  above: 'above / por encima del nivel', at: 'at / en el nivel', below: 'below / por debajo del nivel',
+  missing: 'not reported / sin reportar', 'no-limit': 'screening input only / solo entrada de evaluación',
 };
+const CHEM_ES = {
+  lead: 'Plomo', copper: 'Cobre', nitrate: 'Nitrato', arsenic: 'Arsénico',
+  pfoa: 'PFOA', pfos: 'PFOS', pfhxs: 'PFHxS', pfna: 'PFNA', genx: 'GenX', pfbs: 'PFBS',
+};
+const UNKNOWN_NAMES_ES = { ...CHEM_ES, advisory: 'aviso', ecoli: 'estado de E. coli' };
+const REFERENCE_TEXT_ES = {
+  lead: 'Nivel de acción LCRI de 10 ppb desde el 1 de noviembre de 2027; nivel actual del sistema de 15 ppb; ninguno es un umbral de exposición segura',
+  copper: 'Nivel de acción de 1300 ppb',
+  nitrate: 'MCL de 10 mg/L como N',
+  arsenic: 'MCL de 10 ppb',
+  pfoa: 'MCL de 4.0 ppt',
+  pfos: 'MCL de 4.0 ppt',
+  pfhxs: 'MCL de 10 ppt',
+  pfna: 'MCL de 10 ppt',
+  genx: 'MCL de 10 ppt',
+  pfbs: 'Sin nivel individual',
+};
+const WHO_WORD_ES = { above: 'por encima', at: 'en el nivel', below: 'por debajo' };
+const HI_STATUS_BI = {
+  above: 'above / por encima', at: 'at / en el nivel', below: 'below / por debajo',
+  'above-lower-bound': 'above, lower bound / por encima, cota inferior',
+  incomplete: 'incomplete / incompleto', 'not-applicable': 'not applicable / no aplica',
+};
+function biSpans(en, es) {
+  return [el('span', { lang: 'en', text: en }), document.createTextNode(' / '), el('span', { lang: 'es', text: es })];
+}
+function biHeading(tag, en, es) {
+  return el(tag, {}, biSpans(en, es));
+}
 
 function fieldLine(label) {
   return el('div', { class: 'ps-field' }, [el('span', { text: label }), el('span', { class: 'ps-blank' })]);
@@ -1037,11 +1079,16 @@ function renderPrintSheet(view) {
   const { sample, screen } = view;
   const spec = actionText(screen.action);
   const findings = diagnose({ samples: state.samples, screens: state.screens, active: state.active });
+  const unknownText = screen.unknowns.map(id => {
+    const en = UNKNOWN_NAMES[id] ?? id;
+    const es = UNKNOWN_NAMES_ES[id] ?? id;
+    return `${en} / ${es}`;
+  }).join(', ');
 
   sheet.append(
     el('header', { class: 'ps-head' }, [
-      el('h1', { text: 'Community Water Field Audit Sheet' }),
-      el('p', { class: 'ps-brand', text: 'WaterWatch / Hoja de auditoría del agua' }),
+      biHeading('h1', 'Community Water Field Audit Sheet', 'Hoja comunitaria de auditoría del agua'),
+      el('p', { class: 'ps-brand', text: 'WaterWatch' }),
     ]),
     el('p', { class: 'ps-tap', text: `Tap / Grifo: ${sample.tap}` }),
     el('p', {
@@ -1052,7 +1099,7 @@ function renderPrintSheet(view) {
       text: `${state.synthetic
         ? 'Synthetic example / Ejemplo sintético'
         : 'CSV values entered by user / Datos ingresados por el usuario'}${screen.unknowns.length
-        ? `   |   Unreported / No reportado: ${screen.unknowns.map(id => UNKNOWN_BI[id] ?? UNKNOWN_NAMES[id] ?? id).join(', ')}`
+        ? `   |   Unreported / Sin reportar: ${unknownText}`
         : ''}`,
     }),
   );
@@ -1083,45 +1130,65 @@ function renderPrintSheet(view) {
     const ratio = benchmarkRatio(r);
     const who = WHO_GUIDELINES[r.id];
     const whoState = who ? whoStatus(r.id, r.value) : null;
+    const epaText = r.id === 'pfbs'
+      ? 'none (index only) / sin nivel individual (solo índice)'
+      : `${REFERENCE_TEXT[r.id]} / ${REFERENCE_TEXT_ES[r.id]}`;
+    const whoText = who
+      ? `${who.text} / ${who.textEs}${WHO_WORD[whoState] ? `, ${WHO_WORD[whoState]} / ${WHO_WORD_ES[whoState]}` : ''}`
+      : 'no value / sin valor';
     tbody.append(el('tr', { class: ['above', 'at'].includes(r.status) ? 'ps-flag' : '' }, [
-      el('td', { text: r.label }),
+      el('td', { text: `${r.label} / ${CHEM_ES[r.id]}` }),
       el('td', { class: 'num', text: r.value === null ? 'n/r' : `${r.value} ${r.unit}` }),
-      el('td', { text: r.id === 'pfbs' ? 'none (index only)' : REFERENCE_TEXT[r.id] }),
+      el('td', { text: epaText }),
       el('td', { class: 'num', text: ratio === null ? '' : ratioText(ratio) }),
       el('td', { text: STATUS_BI[r.status] ?? r.status }),
-      el('td', { text: who ? `${who.value}${r.id === 'nitrate' ? ' mg/L as NO3' : ' ppb'}${WHO_WORD[whoState] ? `, ${WHO_WORD[whoState]}` : ''}` : 'no value / sin valor' }),
+      el('td', { text: whoText }),
     ]));
   }
   const hi = screen.mixture;
   const names = { pfhxs: 'PFHxS', pfna: 'PFNA', genx: 'GenX', pfbs: 'PFBS' };
-  sheet.append(el('h2', { text: 'Readings / Lecturas' }), table, el('p', {
+  const hiKind = hi.epaMixture
+    ? 'multi-constituent mixture / mezcla multiconstituyente'
+    : 'screening sum / suma de evaluación';
+  const hiPartial = hi.partial ? '; partial lower bound / cota inferior parcial' : '';
+  sheet.append(biHeading('h2', 'Readings', 'Lecturas'), table, el('p', {
     class: 'ps-math',
-    text: `PFAS Hazard Index = ${hi.terms.map(term => `${names[term.id]}/${term.denominator}`).join(' + ')} = ${hi.terms.map(term => term.quotient ?? 'n/r').join(' + ')} = ${hi.raw ?? 'n/r'} (${hi.status.replace(/-/g, ' ')}; benchmark 1)`,
+    text: `PFAS Hazard Index / Índice de Peligro de PFAS = ${hi.terms.map(term => `${names[term.id]}/${term.denominator}`).join(' + ')} = ${hi.terms.map(term => term.quotient ?? 'n/r').join(' + ')} = ${hi.raw ?? 'n/r'} (${HI_STATUS_BI[hi.status] ?? hi.status}; ${hiKind}${hiPartial}; benchmark 1 / nivel 1)`,
   }));
 
-  sheet.append(el('div', { class: 'ps-split' }, [
-    el('div', {}, [
-      el('h2', { text: 'Likely sources / Fuentes probables' }),
-      // The sheet stays one page: the three most urgent patterns print, the rest stay in the app.
-      el('ol', { class: 'ps-diag' }, findings.slice(0, 3).map(finding => el('li', {}, [
-        el('strong', { text: `${finding.title} / ${finding.titleEs}. ` }),
+  sheet.append(el('section', { class: 'ps-diagnostic-section' }, [
+    biHeading('h2', 'Likely sources and field steps', 'Fuentes probables y pasos de campo'),
+    el('ol', { class: 'ps-diag' }, findings.slice(0, 3).map(finding => el('li', {}, [
+      el('div', { class: 'ps-diag-lang', lang: 'en' }, [
+        el('strong', { text: `${finding.title}. ` }),
         document.createTextNode(`${finding.evidence} ${finding.action}`),
-      ]))),
-      findings.length > 3 ? el('p', {
-        text: `${findings.length - 3} more pattern${findings.length - 3 === 1 ? '' : 's'} in the app / ${findings.length - 3} más en la aplicación.`,
-      }) : null,
-    ]),
+        finding.cite ? el('em', { text: ` Common sources (${finding.cite.cite}): ${finding.cite.text}` }) : null,
+      ]),
+      el('div', { class: 'ps-diag-lang', lang: 'es' }, [
+        el('strong', { text: `${finding.titleEs}. ` }),
+        document.createTextNode(`${finding.evidenceEs} ${finding.actionEs}`),
+        finding.cite ? el('em', { text: ` Fuentes comunes (${finding.cite.citeEs}): ${finding.cite.textEs}` }) : null,
+      ]),
+    ]))),
+    findings.length > 3 ? el('p', {
+      text: `${findings.length - 3} more pattern${findings.length - 3 === 1 ? '' : 's'} in the app / ${findings.length - 3} patrón${findings.length - 3 === 1 ? '' : 'es'} más en la aplicación.`,
+    }) : null,
+  ]));
+
+  sheet.append(el('div', { class: 'ps-split ps-record-split' }, [
     el('div', {}, [
-      el('h2', { text: 'Field record / Registro de campo' }),
+      biHeading('h2', 'Field record', 'Registro de campo'),
       fieldLine('Collected by / Recogido por'),
       fieldLine('Date and time / Fecha y hora'),
       fieldLine('Hours water sat unused / Horas sin uso'),
       fieldLine('Lab and sample ID / Laboratorio e ID'),
       el('ul', { class: 'ps-checks ps-inline' }, [
-        checkLine('First draw / Primera agua'),
-        checkLine('Flushed / Después de correr'),
+        checkLine('First draw / Primera extracción'),
+        checkLine('Flushed / Purga'),
       ]),
-      el('h2', { text: 'Follow-up / Seguimiento' }),
+    ]),
+    el('div', {}, [
+      biHeading('h2', 'Follow-up', 'Seguimiento'),
       el('ul', { class: 'ps-checks' }, [
         checkLine('Shared with the water system / Compartido con el sistema de agua'),
         checkLine('Shared with the health department / Compartido con salud pública'),
@@ -1132,12 +1199,13 @@ function renderPrintSheet(view) {
   ]));
   sheet.append(el('p', {
     class: 'ps-meta',
-    text: 'WaterWatch screens one tap sample against EPA reference levels, with WHO guideline values for comparison. It is not a compliance determination or a potability clearance, and likely sources are screening hints, not proof. Sources: EPA PFAS rule (2024), EPA LCRI, EPA drinking water regulations table, 40 CFR 141.63, CDC drinking-water advisories, WHO drinking-water guidelines (2022). Generated offline; nothing was sent anywhere.',
+    lang: 'en',
+    text: 'WaterWatch screens one tap sample against EPA reference levels, with WHO guideline values for comparison. It is not a compliance determination or a potability clearance, and likely sources are screening hints, not proof. The current federal lead action level is 15 ppb; EPA LCRI uses 10 ppb beginning November 1, 2027. Neither is a safe-exposure threshold. Sources: EPA PFAS rule (2024), EPA LCRI, EPA drinking water regulations table, 40 CFR 141.63, CDC drinking-water advisories, WHO drinking-water guidelines (2026). Generated offline; nothing was sent anywhere.',
   }));
   sheet.append(el('p', {
     class: 'ps-meta',
     lang: 'es',
-    text: 'WaterWatch evalúa una sola muestra de grifo contra niveles de referencia de la EPA, con valores guía de la OMS para comparar. No es una determinación de cumplimiento ni una autorización de potabilidad. Generado sin conexión; nada se envió a ninguna parte.',
+    text: 'WaterWatch evalúa una sola muestra de grifo contra niveles de referencia de la EPA, con valores guía de la OMS para comparar. No es una determinación de cumplimiento ni una autorización de potabilidad, y las fuentes probables son indicios, no pruebas. El nivel de acción federal actual del plomo es 15 ppb; la LCRI de la EPA usa 10 ppb desde el 1 de noviembre de 2027. Ninguno es un umbral de exposición segura. Generado sin conexión; nada se envió a ninguna parte.',
   }));
 }
 
@@ -1165,6 +1233,11 @@ function setupLab() {
         origin: 'unverified-input',
         samples: state.samples,
       }),
+      onLanguage: lang => {
+        state.lang = lang;
+        renderDiagnostic(current());
+        renderPrintSheet(current());
+      },
     });
     section.hidden = false;
     labController.refresh();

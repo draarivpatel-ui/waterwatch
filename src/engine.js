@@ -14,9 +14,10 @@ const definitions = [
 export const CHEMICALS = Object.freeze(definitions.map(([id, label, unit, limit, kind, sig]) =>
   Object.freeze({ id, label, unit, limit, kind, sig })));
 
-const mixtureInputs = [['pfhxs', '10'], ['pfna', '10'], ['genx', '10'], ['pfbs', '2000']];
+const mixtureInputs = [['pfhxs', '10', '3.0'], ['pfna', '10', '4.0'], ['genx', '10', '5.0'], ['pfbs', '2000', '3.0']];
 const advisories = new Set(['none', 'boil', 'do-not-drink', 'do-not-use', 'unknown']);
 const bacteria = new Set(['present', 'absent', 'unknown']);
+const drawTypes = new Set(['first-draw', 'flushed', 'other', 'unknown']);
 const decimal = /^[0-9]{1,9}(?:\.[0-9]{1,12})?$/;
 const scale = 16;
 const one = 10n ** BigInt(scale);
@@ -65,7 +66,9 @@ export function normalizeSample(sample) {
   if (typeof sample !== 'object' || sample === null) {
     throw new TypeError('Each sample must be an object.');
   }
-  const { tap, advisory = 'unknown', ecoli = 'unknown', values = {} } = sample;
+  const {
+    tap, advisory = 'unknown', ecoli = 'unknown', values = {}, pairId = null, drawType = 'unknown',
+  } = sample;
   const text = typeof tap === 'string' ? tap.trim() : '';
   if (!text || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(text)) {
     throw new RangeError('Tap name must contain 1 to 100 visible characters without controls.');
@@ -74,6 +77,20 @@ export function normalizeSample(sample) {
   if ([...name].length > 100) {
     throw new RangeError('Tap name must contain 1 to 100 visible characters without controls.');
   }
+  let pair = null;
+  if (pairId !== null && pairId !== undefined && pairId !== '') {
+    if (typeof pairId !== 'string') throw new TypeError('Pair metadata must be text.');
+    const rawPair = pairId.trim();
+    if (!rawPair || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(rawPair)) {
+      throw new RangeError('Pair metadata must contain 1 to 100 visible characters without controls.');
+    }
+    const pairText = rawPair.replace(/[^\S ]+/g, ' ');
+    if ([...pairText].length > 100) {
+      throw new RangeError('Pair metadata must contain 1 to 100 visible characters without controls.');
+    }
+    pair = pairText;
+  }
+  if (!drawTypes.has(drawType)) throw new RangeError('Draw type must be first-draw, flushed, other, or unknown.');
   if (!advisories.has(advisory)) throw new RangeError('Unknown advisory type.');
   if (!bacteria.has(ecoli)) throw new RangeError('E. coli must be present, absent, or unknown.');
   if (!values || typeof values !== 'object' || Array.isArray(values)) {
@@ -86,6 +103,8 @@ export function normalizeSample(sample) {
     tap: name,
     advisory,
     ecoli,
+    pairId: pair,
+    drawType,
     values: Object.fromEntries(CHEMICALS.map(({ id, label }) =>
       [id, reading(Object.hasOwn(values, id) ? values[id] : null, label)])),
   };
@@ -94,27 +113,34 @@ export function normalizeSample(sample) {
 function hazardIndex(values) {
   let total = 0n;
   let positives = 0;
+  let quantified = 0;
   const missing = [];
-  const terms = mixtureInputs.map(([id, denominator]) => {
+  const terms = mixtureInputs.map(([id, denominator, pql]) => {
     if (values[id] == null) {
       missing.push(id);
-      return { id, denominator, quotient: null };
+      return { id, denominator, pql, quotient: null, quantified: false };
     }
-    const contribution = units(values[id]) / BigInt(denominator);
+    const amount = units(values[id]);
+    const contribution = amount / BigInt(denominator);
+    const isQuantified = amount >= units(pql);
     if (contribution > 0n) positives += 1;
+    if (isQuantified) quantified += 1;
     total += contribution;
-    return { id, denominator, quotient: fixed(contribution) };
+    return { id, denominator, pql, quotient: fixed(contribution), quantified: isQuantified };
   });
   const exactStatus = status(total, one);
-  const completeMixture = missing.length === 0 && positives >= 2;
-  const rounded = completeMixture ? roundSignificant(total, 1) : null;
+  const epaMixture = quantified >= 2;
+  const rounded = epaMixture && missing.length === 0 ? roundSignificant(total, 1) : null;
   return {
     status: exactStatus === 'above' ? (missing.length ? 'above-lower-bound' : 'above') :
-      completeMixture ? exactStatus : missing.length ? 'incomplete' : 'not-applicable',
+      epaMixture && missing.length === 0 ? exactStatus : missing.length ? 'incomplete' : 'not-applicable',
     raw: missing.length === terms.length ? null : fixed(total),
     rounded: rounded?.text ?? null,
     roundedStatus: rounded ? status(rounded.units, one) : null,
     positives,
+    quantified,
+    epaMixture,
+    partial: missing.length > 0,
     missing,
     terms,
   };
@@ -144,8 +170,9 @@ export function screenSample(input) {
   if (ecoli === 'unknown') unknowns.push('ecoli');
   const microbial = advisory === 'boil' || ecoli === 'present';
   const hasChemicals = chemicals.length > 0;
+  const nitrateAtOrAbove = ['at', 'above'].includes(results.find(result => result.id === 'nitrate')?.status);
   const action = advisory === 'do-not-use' || advisory === 'do-not-drink' ? advisory :
-    microbial && hasChemicals ? 'co-occurrence' :
+    microbial && (hasChemicals || nitrateAtOrAbove) ? 'co-occurrence' :
     advisory === 'boil' ? 'boil' :
     microbial ? 'microbial' :
     hasChemicals ? 'chemical' :

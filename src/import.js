@@ -4,6 +4,7 @@ export const CSV_HEADERS = [
   'tap', 'advisory', 'ecoli',
   'lead_ppb', 'copper_ppb', 'nitrate_mg_l_as_n', 'arsenic_ppb',
   'pfoa_ppt', 'pfos_ppt', 'pfhxs_ppt', 'pfna_ppt', 'genx_ppt', 'pfbs_ppt',
+  'pair_id', 'draw_type',
 ];
 
 const HEADER_TO_ID = {
@@ -21,6 +22,7 @@ const HEADER_TO_ID = {
 
 const ADVISORIES = new Set(['none', 'boil', 'do-not-drink', 'do-not-use', 'unknown']);
 const ECOLI = new Set(['present', 'absent', 'unknown']);
+const DRAW_TYPES = new Set(['first-draw', 'flushed', 'other', 'unknown']);
 const DECIMAL = /^[0-9]{1,9}(?:\.[0-9]{1,12})?$/;
 const MAX_BYTES = 1024 * 1024;
 const MAX_ROWS = 500;
@@ -216,6 +218,8 @@ export function parseCsv(input) {
     .filter(column => column.index !== undefined);
   const advisoryIndex = columns.get('advisory');
   const ecoliIndex = columns.get('ecoli');
+  const pairIndex = columns.get('pair_id');
+  const drawIndex = columns.get('draw_type');
 
   for (const record of data) {
     const { cells, line: row } = record;
@@ -236,6 +240,9 @@ export function parseCsv(input) {
       : normalizeToken(cells[advisoryIndex], ADVISORIES, 'advisory', row, errors);
     const ecoli = ecoliIndex === undefined ? 'unknown'
       : normalizeToken(cells[ecoliIndex], ECOLI, 'ecoli', row, errors);
+    const pairId = pairIndex === undefined || cells[pairIndex].trim() === '' ? null : cells[pairIndex];
+    const drawType = drawIndex === undefined ? 'unknown'
+      : normalizeToken(cells[drawIndex], DRAW_TYPES, 'draw_type', row, errors);
     const values = {};
     for (const { name, id, index } of chemColumns) {
       const raw = cells[index];
@@ -253,7 +260,7 @@ export function parseCsv(input) {
     if (errors.length !== before || tap === '') continue;
     let sample;
     try {
-      sample = normalizeSample({ tap, advisory, ecoli, values });
+      sample = normalizeSample({ tap, advisory, ecoli, pairId, drawType, values });
     } catch (error) {
       errors.push({ row, field: null, message: error.message });
       continue;

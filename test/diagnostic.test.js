@@ -93,7 +93,7 @@ test('school first draw points lead to plumbing near the tap with the flushed pa
   const { samples, screens } = preset('school');
   const findings = diagnose({ samples, screens, active: 0 });
   assert.deepEqual(ids(findings), ['lead-local']);
-  assert.match(findings[0].evidence, /24\.6 ppb here but 3\.1 ppb at East hall fountain \(flushed\), 87% lower/);
+  assert.match(findings[0].evidence, /24\.6 ppb in this first-draw row but 3\.1 ppb in its paired flushed row at East hall fountain \(flushed\), 87% lower/);
   assert.equal(findings[0].cite, SOURCE_HINTS.lead);
 });
 
@@ -107,8 +107,8 @@ test('industrial corridor flags the PFAS mixture with no single exceedance', () 
   const { samples, screens } = preset('well');
   const findings = diagnose({ samples, screens, active: 0 });
   assert.deepEqual(ids(findings), ['pfas-mixture']);
-  assert.match(findings[0].evidence, /^No single PFAS is above its own MCL/);
-  assert.match(findings[0].evidence, /Hazard Index of 1\.27, above 1\./);
+  assert.match(findings[0].evidence, /^PFHxS, PFNA and PFBS are at or above their practical quantitation levels/);
+  assert.match(findings[0].evidence, /Hazard Index is 1\.27, above 1\./);
   assert.equal(findings[0].cite, SOURCE_HINTS.pfas);
 });
 
@@ -137,11 +137,20 @@ test('municipal baseline shows no pattern for either tap', () => {
 
 /* ---------- lead pairing ---------- */
 
-test('lead high at every tap points to a shared cause', () => {
-  const { samples, screens } = load(`${HEAD}\nA,none,absent,20,,,,,,,,,\nB,none,absent,15,,,,,,,,,`);
+test('unrelated lead rows report contrast without inventing shared plumbing', () => {
+  const { samples, screens } = load(`${HEAD}\nKitchen,none,absent,11,,,,,,,,,\nUnrelated well,none,absent,6,,,,,,,,,`);
+  const findings = diagnose({ samples, screens, active: 0 });
+  assert.deepEqual(ids(findings), ['lead-contrast']);
+  assert.match(findings[0].evidence, /Unrelated well, reads 6 ppb/);
+  assert.match(findings[0].evidence, /cannot separate local plumbing from source water/);
+  assert.doesNotMatch(findings[0].evidence, /shared service line|shared plumbing|stays high/i);
+});
+
+test('explicit paired metadata high in both draws supports a shared pattern', () => {
+  const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,20,pair1,first-draw\nB,15,pair1,flushed`);
   const findings = diagnose({ samples, screens, active: 0 });
   assert.deepEqual(ids(findings), ['lead-shared']);
-  assert.match(findings[0].evidence, /B, still reads 15 ppb \(75% of this tap\)/);
+  assert.match(findings[0].evidence, /paired flushed row, B, still reads 15 ppb/);
 });
 
 test('a single lead tap asks for a first-draw and flushed pair', () => {
@@ -157,8 +166,8 @@ test('lead pairing ignores taps with unreported lead', () => {
   assert.deepEqual(ids(diagnose({ samples, screens, active: 0 })), ['lead-unpaired']);
 });
 
-test('lead at exactly half of this tap counts as local plumbing', () => {
-  const { samples, screens } = load(`${HEAD}\nA,none,absent,20,,,,,,,,,\nB,none,absent,10,,,,,,,,,`);
+test('lead at exactly half of this tap counts as local plumbing only with pair metadata', () => {
+  const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,20,pair1,first-draw\nB,10,pair1,flushed`);
   const findings = diagnose({ samples, screens, active: 0 });
   assert.deepEqual(ids(findings), ['lead-local']);
   assert.match(findings[0].evidence, /50% lower/);
@@ -172,10 +181,10 @@ test('lead at the action level is treated like above without overstating it', ()
   assert.doesNotMatch(findings[0].title, /^Lead above/);
 });
 
-test('lead pairing picks the lowest other tap', () => {
-  const { samples, screens } = load(`${HEAD}\nA,none,absent,30,,,,,,,,,\nB,none,absent,20,,,,,,,,,\nC,none,absent,3,,,,,,,,,`);
+test('lead pairing picks the lowest paired draw', () => {
+  const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,30,pair1,first-draw\nB,20,pair1,flushed\nC,3,pair1,flushed`);
   const findings = diagnose({ samples, screens, active: 0 });
-  assert.match(findings[0].evidence, /3 ppb at C, 90% lower/);
+  assert.match(findings[0].evidence, /3 ppb in its paired flushed row at C, 90% lower/);
 });
 
 /* ---------- other contaminants ---------- */
@@ -208,7 +217,7 @@ test('a lower-bound mixture says the unreported terms are still out', () => {
   const { samples, screens } = load(`${HEAD}\nT,none,absent,,,,,,,9,9,,`);
   const findings = diagnose({ samples, screens, active: 0 });
   assert.deepEqual(ids(findings), ['pfas-mixture']);
-  assert.match(findings[0].evidence, /even before the unreported terms/);
+  assert.match(findings[0].evidence, /partial sum and a lower bound/);
 });
 
 test('E. coli alone gives a fecal finding without the nitrate clause', () => {
@@ -240,6 +249,40 @@ test('one unreported field uses the singular', () => {
   assert.match(findings[0].evidence, /^1 field is unreported/);
 });
 
+test('PFBS-only high reading is a single-compound screening signal, never a mixture claim', () => {
+  const { samples, screens } = load(`tap,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nT,0,0,0,5000`);
+  assert.equal(screens[0].mixture.raw, '2.5');
+  assert.equal(screens[0].mixture.status, 'above');
+  assert.equal(screens[0].mixture.epaMixture, false);
+  const findings = diagnose({ samples, screens, active: 0 });
+  assert.deepEqual(ids(findings), ['pfas-mixture']);
+  assert.match(findings[0].title, /One PFAS drives the screening sum/);
+  assert.match(findings[0].evidence, /single-compound screening signal/);
+  assert.doesNotMatch(`${findings[0].title} ${findings[0].evidence}`, /Several PFAS add up/i);
+});
+
+test('nonzero inputs below quantitation levels do not count as an EPA mixture', () => {
+  const { screens } = load(`tap,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nT,0,2,2,5000`);
+  assert.equal(screens[0].mixture.quantified, 1);
+  assert.equal(screens[0].mixture.epaMixture, false);
+});
+
+test('two quantified mixture constituents make the EPA multi-constituent mixture explicit', () => {
+  const { samples, screens } = load(`tap,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nT,0,6,5,0`);
+  assert.equal(screens[0].mixture.epaMixture, true);
+  const findings = diagnose({ samples, screens, active: 0 });
+  assert.match(findings[0].title, /Quantified PFAS mixture/);
+  assert.match(findings[0].evidence, /multi-constituent Hazard Index/);
+});
+
+test('partial PFAS sum is labeled as a lower bound distinct from a complete mixture', () => {
+  const { samples, screens } = load(`tap,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nT,6,5,,`);
+  assert.equal(screens[0].mixture.status, 'above-lower-bound');
+  const findings = diagnose({ samples, screens, active: 0 });
+  assert.match(findings[0].title, /lower-bound screen/);
+  assert.match(findings[0].evidence, /partial sum and a lower bound/);
+});
+
 /* ---------- contract ---------- */
 
 test('diagnose tolerates bad input and out-of-range taps', () => {
@@ -263,7 +306,7 @@ test('every finding has a title in both languages, evidence, and an action', () 
     const { samples, screens } = load(csv);
     samples.forEach((_, active) => {
       for (const finding of diagnose({ samples, screens, active })) {
-        for (const key of ['title', 'titleEs', 'evidence', 'action']) {
+        for (const key of ['title', 'titleEs', 'evidence', 'evidenceEs', 'action', 'actionEs']) {
           assert.equal(typeof finding[key], 'string');
           assert.ok(finding[key].length > 8, `${finding.id}.${key}`);
         }

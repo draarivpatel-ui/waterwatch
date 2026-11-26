@@ -5,7 +5,7 @@ import { CSV_HEADERS, CsvError, decodeUpload, parseCsv } from '../src/import.js'
 const HEADER = CSV_HEADERS.join(',');
 const row = cells => cells.join(',');
 const csv = lines => lines.join('\n');
-const full = cells => [HEADER, row(cells)];
+const full = cells => [HEADER, row([...cells, ...Array(Math.max(0, 15 - cells.length)).fill('')])];
 
 function decode(text, encoding = 'utf8') {
   return Buffer.from(text, encoding);
@@ -14,7 +14,7 @@ function decode(text, encoding = 'utf8') {
 test('CSV_HEADERS is the exact published schema', () => {
   assert.deepEqual(CSV_HEADERS, [
     'tap', 'advisory', 'ecoli', 'lead_ppb', 'copper_ppb', 'nitrate_mg_l_as_n',
-    'arsenic_ppb', 'pfoa_ppt', 'pfos_ppt', 'pfhxs_ppt', 'pfna_ppt', 'genx_ppt', 'pfbs_ppt',
+    'arsenic_ppb', 'pfoa_ppt', 'pfos_ppt', 'pfhxs_ppt', 'pfna_ppt', 'genx_ppt', 'pfbs_ppt', 'pair_id', 'draw_type',
   ]);
 });
 
@@ -74,7 +74,7 @@ test('quoted field may contain escaped double quotes', () => {
 });
 
 test('quoted field spanning lines tokenizes, then fails on tap controls', () => {
-  const error = rejects(csv([HEADER, '"Multi\nline tap",boil,present,1,2,3,4,5,6,7,8,9,10']));
+  const error = rejects(csv([HEADER, '"Multi\nline tap",boil,present,1,2,3,4,5,6,7,8,9,10,,']));
   assert.match(error.errors[0].message, /Tap name/);
 });
 
@@ -96,6 +96,23 @@ test('blank advisory and ecoli cells normalize to unknown', () => {
   const [sample] = parseCsv(csv(['tap,advisory,ecoli', 'A,,']));
   assert.equal(sample.advisory, 'unknown');
   assert.equal(sample.ecoli, 'unknown');
+});
+
+test('paired-draw metadata parses as explicit sample provenance', () => {
+  const [sample] = parseCsv(csv(['tap,lead_ppb,pair_id,draw_type', 'East tap,12,east-hall,First Draw']));
+  assert.equal(sample.pairId, 'east-hall');
+  assert.equal(sample.drawType, 'first-draw');
+});
+
+test('blank paired-draw metadata stays unknown without blocking legacy CSVs', () => {
+  const [sample] = parseCsv(csv(['tap,lead_ppb', 'East tap,12']));
+  assert.equal(sample.pairId, null);
+  assert.equal(sample.drawType, 'unknown');
+});
+
+test('bad draw types and control-bearing pair ids reject', () => {
+  rejects(csv(['tap,lead_ppb,draw_type', 'A,5,random']), { row: 2, field: 'draw_type' });
+  rejects(csv(['tap,lead_ppb,pair_id', 'A,5,"bad\nid"']), { match: /Pair metadata/ });
 });
 
 test('missing advisory and ecoli columns default to unknown', () => {
@@ -205,11 +222,11 @@ test('a space before a quote is still a bare quote', () => {
 });
 
 test('short rows fail on field count', () => {
-  rejects(csv([HEADER, 'A,none,absent,1,2']), { row: 2, match: /Expected 13 fields, found 5/ });
+  rejects(csv([HEADER, 'A,none,absent,1,2']), { row: 2, match: /Expected 15 fields, found 5/ });
 });
 
 test('long rows fail on record arity inside data rows', () => {
-  rejects(csv([HEADER, 'A,none,absent,1,2,3,4,5,6,7,8,9,10,EXTRA']), { row: 2, match: /more than 13 fields/ });
+  rejects(csv([HEADER, 'A,none,absent,1,2,3,4,5,6,7,8,9,10,EXTRA,MORE,AGAIN']), { row: 2, match: /more than 15 fields/ });
 });
 
 test('an empty row fails closed instead of being skipped', () => {
@@ -332,7 +349,7 @@ test('files over 1 MB are refused before parsing', () => {
 });
 
 test('rejects oversized record arity before collecting rows', () => {
-  rejects(`tap,${'x,'.repeat(30)}`, { row: 1, match: /more than 13 fields/ });
+  rejects(`tap,${'x,'.repeat(30)}`, { row: 1, match: /more than 15 fields/ });
 });
 
 test('UTF-8 size cap applies to non-ASCII text', () => {

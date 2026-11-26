@@ -661,7 +661,7 @@ export const STRINGS = {
     ratioChartTitle: 'Benchmark ratio by contaminant',
     ratioChartNote: 'Bars compare each measured value with its reference level. PFBS is drawn against its 2000 ppt mixture input, not an MCL. Unreported fields stay hollow.',
     hiMissing: names => `Unreported constituents: ${names}.`,
-    hiLine: 'HI = 1',
+    hiLine: 'HI = 1', lowerBound: 'lower bound', quotient: 'quotient',
     exportsTitle: 'Audited lab brief',
     exportsNote: 'One digest stamps the on-page line, the JSON download, the CSV provenance header, and the Markdown footer.',
     btnJson: 'JSON', btnCsv: 'CSV', btnMd: 'Markdown', btnCopy: 'Copy share link',
@@ -725,7 +725,7 @@ export const STRINGS = {
     ratioChartTitle: 'Proporción respecto al nivel de referencia',
     ratioChartNote: 'Las barras comparan cada valor medido con su nivel de referencia. PFBS se dibuja contra su entrada de mezcla de 2000 ppt, no contra un MCL. Los campos sin reportar quedan huecos.',
     hiMissing: names => `Constituyentes sin reportar: ${names}.`,
-    hiLine: 'HI = 1',
+    hiLine: 'HI = 1', lowerBound: 'cota inferior', quotient: 'cociente',
     exportsTitle: 'Informe auditado del laboratorio',
     exportsNote: 'Un solo resumen estampa la línea en pantalla, la descarga JSON, el encabezado de procedencia del CSV y el pie del Markdown.',
     btnJson: 'JSON', btnCsv: 'CSV', btnMd: 'Markdown', btnCopy: 'Copiar enlace',
@@ -983,9 +983,10 @@ export function mountLab(root, hooks = {}) {
     // Row names double as focus controls, a full-size equivalent of the chart bars.
     const focusPick = id => {
       const button = el('button', {
-        type: 'button', class: 'lab-pick lab-focus-pick', 'aria-pressed': String(lab.focus === id), text: chemName(id),
+        type: 'button', class: 'lab-pick lab-focus-pick', 'aria-pressed': String(lab.focus === id),
+        'data-focus-control': `matrix-${id}`, text: chemName(id),
       });
-      button.addEventListener('click', () => choose({ focus: id }));
+      button.addEventListener('click', () => activateFocus(id, 'matrix'));
       return button;
     };
     for (const row of matrix.rows) {
@@ -1001,7 +1002,7 @@ export function mountLab(root, hooks = {}) {
     }
     const hi = matrix.hazardIndex;
     const hiCell = hi.cell.kind === 'modeled'
-      ? `${fmtValue(hi.cell.value)}${hi.cell.lowerBound ? ' (lower bound)' : ''}`
+      ? `${fmtValue(hi.cell.value)}${hi.cell.lowerBound ? ` (${t.lowerBound})` : ''}`
       : (t.cell[hi.cell.kind] ?? hi.cell.kind);
     body.append(el('tr', { class: `lab-hi-row${lab.focus === 'hazard-index' ? ' lab-active' : ''}` }, [
       el('th', { scope: 'row' }, focusPick('hazard-index')),
@@ -1012,6 +1013,33 @@ export function mountLab(root, hooks = {}) {
     table.append(body);
     wrap.append(table);
     return wrap;
+  }
+
+  function restoreFocus(control, id) {
+    root.querySelector(`[data-focus-control="${control}-${id}"]`)?.focus({ preventScroll: true });
+  }
+
+  function activateFocus(id, control) {
+    choose({ focus: id });
+    restoreFocus(control, id);
+  }
+
+  function wireSvgButton(node, id, control) {
+    node.addEventListener('click', () => activateFocus(id, control));
+    node.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        activateFocus(id, control);
+      } else if (event.key === ' ') {
+        event.preventDefault();
+      }
+    });
+    node.addEventListener('keyup', event => {
+      if (event.key === ' ') {
+        event.preventDefault();
+        activateFocus(id, control);
+      }
+    });
   }
 
   /* ----- charts ----- */
@@ -1041,12 +1069,12 @@ export function mountLab(root, hooks = {}) {
     const classes = { pfhxs: 'seg-1', pfna: 'seg-2', genx: 'seg-3', pfbs: 'seg-4' };
     for (const term of summary.mixture.terms) {
       const q = term.quotient === null ? 0 : Number(term.quotient);
-      const g = svgEl('g', { tabindex: '0', role: 'listitem', class: 'lab-bar' });
-      g.setAttribute('aria-label', `${names[term.id]}: ${term.quotient === null ? t.notReported : `quotient ${term.quotient}`}`);
-      g.addEventListener('click', () => choose({ focus: term.id }));
-      g.addEventListener('keydown', event => {
-        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose({ focus: term.id }); }
+      const g = svgEl('g', {
+        tabindex: '0', role: 'button', class: 'lab-bar',
+        'aria-pressed': String(lab.focus === term.id), 'data-focus-control': `hi-${term.id}`,
       });
+      g.setAttribute('aria-label', `${names[term.id]}: ${term.quotient === null ? t.notReported : `${t.quotient} ${term.quotient}`}`);
+      wireSvgButton(g, term.id, 'hi');
       if (term.quotient === null) {
         const mx = Math.min(x(offset) + missingOffset, W - MR - 34);
         missingOffset += 36;
@@ -1095,14 +1123,12 @@ export function mountLab(root, hooks = {}) {
       const entry = summary.ratios[id];
       const y = MT + i * ROWH;
       const g = svgEl('g', {
-        tabindex: '0', role: 'listitem', class: `lab-bar${lab.focus === id ? ' lab-bar-focus' : ''}`,
+        tabindex: '0', role: 'button', class: `lab-bar${lab.focus === id ? ' lab-bar-focus' : ''}`,
+        'aria-pressed': String(lab.focus === id), 'data-focus-control': `ratio-${id}`,
       });
       const ratioText = entry.value === null ? t.notReported : `${fmtRatio(entry.ratio)}x`;
       g.setAttribute('aria-label', `${chemName(id)}: ${entry.value === null ? t.notReported : `${ratioText} (${statusWord(entry.status)})`}`);
-      g.addEventListener('click', () => choose({ focus: id }));
-      g.addEventListener('keydown', event => {
-        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose({ focus: id }); }
-      });
+      wireSvgButton(g, id, 'ratio');
       // A full-row hit area, so the whole row answers a pointer, not only the bar.
       g.append(svgEl('rect', { x: 0, y, width: W, height: ROWH, class: 'bar-hit' }));
       const label = svgEl('text', { x: ML - 8, y: y + 17, 'text-anchor': 'end', class: 'seg-label' });
@@ -1154,7 +1180,10 @@ export function mountLab(root, hooks = {}) {
     root.setAttribute('lang', lab.lang);
     root.replaceChildren();
     const heading = document.getElementById('lab-h');
-    if (heading) heading.textContent = t.title;
+    if (heading) {
+      heading.textContent = t.title;
+      heading.setAttribute('lang', lab.lang);
+    }
 
     const head = el('div', { class: 'lab-head' }, [
       el('div', { class: 'lab-lang', role: 'group', 'aria-label': t.langLabel }, [
@@ -1294,7 +1323,10 @@ export function mountLab(root, hooks = {}) {
     const sdgHeading = document.getElementById('sdg6-h');
     if (sdgSection && sdgBody) {
       sdgSection.hidden = false;
-      if (sdgHeading) sdgHeading.textContent = (SDG6_STRINGS[lab.lang] ?? SDG6_STRINGS.en).title;
+      if (sdgHeading) {
+        sdgHeading.textContent = (SDG6_STRINGS[lab.lang] ?? SDG6_STRINGS.en).title;
+        sdgHeading.setAttribute('lang', lab.lang);
+      }
       renderSdg6Section(sdgBody, {
         lang: lab.lang,
         state: lab.sdg,
@@ -1305,6 +1337,7 @@ export function mountLab(root, hooks = {}) {
         choose: next => choose({ sdg: next }),
       });
     }
+    hooks.onLanguage?.(lab.lang);
   }
 
   function renderNote() {

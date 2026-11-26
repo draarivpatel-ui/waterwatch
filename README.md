@@ -36,8 +36,8 @@ these files locally to run without internet.
 npm test
 ```
 
-Node 18 or newer, no packages to install. The suite has 733 tests, 328 of
-them covering the two lab modules and 37 covering the source diagnostic,
+Node 18 or newer, no packages to install. The suite has 743 tests, 328 of
+them covering the two lab modules and 42 covering the source diagnostic,
 alongside the 32 deterministic self-tests the page itself runs.
 
 ## What it does and does not claim
@@ -51,10 +51,11 @@ alongside the 32 deterministic self-tests the page itself runs.
 - The 2024 PFAS rule judges quarterly monitoring by running annual average and
   applies significant-figure rounding. This screen shows rounding as context
   only and never rounds or discards a reading before comparing.
-- The Hazard Index term covers only PFHxS, PFNA, GenX, and PFBS. The mixture
-  benchmark needs at least two positive constituents; the screen still flags
-  any summed index above 1, PFBS alone is not an MCL, and unreported
-  constituents stay visible as unknowns.
+- The Hazard Index term covers only PFHxS, PFNA, GenX, and PFBS. EPA
+  multi-constituent mixture applicability needs at least two constituents at or
+  above their practical quantitation levels; the screen still flags any exact
+  summed index above 1 as a screening signal, PFBS alone is not an MCL, and
+  unreported constituents stay visible as unknowns.
 - The lead benchmark shown is the 10 ppb action level with its November 1, 2027
   compliance date; the legacy 15 ppb 90th-percentile system action level is
   shown alongside. There is no known safe level of lead exposure.
@@ -68,8 +69,9 @@ alongside the 32 deterministic self-tests the page itself runs.
   product's test data does not verify it.
 - EPA proposed changes in 2026; this catalog is a 2024 snapshot, not a live
   regulatory feed.
-- WHO guideline values (lead, copper, nitrate, arsenic) come from the 2022
-  Guidelines for drinking-water quality and are shown for comparison only;
+- WHO guideline values (lead, copper, nitrate, arsenic) come from the 2026
+  Guidelines for drinking-water quality, fourth edition incorporating the
+  first, second and third addenda, and are shown for comparison only;
   every finding uses the EPA benchmark. WHO sets no final guideline value for
   these PFAS, so PFAS rows compare to EPA alone.
 - "Likely sources and field steps" are screening hints built from the EPA
@@ -96,11 +98,14 @@ Columns:
 ```
 tap, advisory, ecoli,
 lead_ppb, copper_ppb, nitrate_mg_l_as_n, arsenic_ppb,
-pfoa_ppt, pfos_ppt, pfhxs_ppt, pfna_ppt, genx_ppt, pfbs_ppt
+pfoa_ppt, pfos_ppt, pfhxs_ppt, pfna_ppt, genx_ppt, pfbs_ppt,
+pair_id, draw_type
 ```
 
 `advisory` is `none`, `boil`, `do-not-drink`, `do-not-use`, or `unknown`.
-`ecoli` is `present`, `absent`, or `unknown`.
+`ecoli` is `present`, `absent`, or `unknown`. `pair_id` and `draw_type` are
+optional paired-draw provenance columns; `draw_type` is `first-draw`,
+`flushed`, `other`, or `unknown`.
 
 ## File map
 
@@ -150,5 +155,5 @@ pfoa_ppt, pfos_ppt, pfhxs_ppt, pfna_ppt, genx_ppt, pfbs_ppt
 - EPA, identifying drinking-water filters certified to reduce PFAS:
   https://www.epa.gov/water-research/identifying-drinking-water-filters-certified-reduce-pfas
 - WHO, Guidelines for drinking-water quality, fourth edition incorporating the
-  first and second addenda (2022):
-  https://www.who.int/publications/i/item/9789240045064
+  first, second and third addenda (2026):
+  https://www.who.int/publications/i/item/9789240121225

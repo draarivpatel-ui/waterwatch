@@ -3,7 +3,7 @@
 // Source wording follows the EPA National Primary Drinking Water
 // Regulations table ("common sources of contaminant in drinking water");
 // WHO values follow the Guidelines for drinking-water quality, fourth
-// edition incorporating the first and second addenda (2022).
+// edition incorporating the first, second and third addenda (2026).
 
 const SCALE = 16;
 const decimal = /^[0-9]{1,9}(?:\.[0-9]{1,12})?$/;
@@ -18,15 +18,16 @@ function compare(a, b) {
 }
 
 // Nitrate is reported as N; WHO states 50 mg/L as the nitrate ion.
-// Molar masses: NO3 62.0049 g/mol, N 14.0067 g/mol.
+// Molar-mass convention: 50 * 14.0067 / 62.0049 = 11.294833... mg/L as N,
+// rounded in display text to about 11.3 mg/L as N.
 const NITRATE_ION = 620049n;
 const NITROGEN = 140067n;
 
 export const WHO_GUIDELINES = Object.freeze({
-  lead: Object.freeze({ value: '10', text: 'WHO 10 ppb (provisional)' }),
-  copper: Object.freeze({ value: '2000', text: 'WHO 2000 ppb' }),
-  nitrate: Object.freeze({ value: '50', text: 'WHO 50 mg/L as nitrate (about 11.3 as N)' }),
-  arsenic: Object.freeze({ value: '10', text: 'WHO 10 ppb (provisional)' }),
+  lead: Object.freeze({ value: '10', text: 'WHO 10 ppb (provisional)', textEs: 'OMS 10 ppb (provisional)' }),
+  copper: Object.freeze({ value: '2000', text: 'WHO 2000 ppb', textEs: 'OMS 2000 ppb' }),
+  nitrate: Object.freeze({ value: '50', text: 'WHO 50 mg/L as nitrate (about 11.2948 as N)', textEs: 'OMS 50 mg/L como nitrato (aprox. 11,2948 como N)' }),
+  arsenic: Object.freeze({ value: '10', text: 'WHO 10 ppb (provisional)', textEs: 'OMS 10 ppb (provisional)' }),
 });
 
 // Returns null when WHO sets no guideline value for the field, 'missing'
@@ -42,19 +43,68 @@ export function whoStatus(id, value) {
 }
 
 export const SOURCE_HINTS = Object.freeze({
-  lead: Object.freeze({ text: 'Corrosion of household plumbing systems; erosion of natural deposits.', cite: 'EPA drinking water regulations table' }),
-  copper: Object.freeze({ text: 'Corrosion of household plumbing systems; erosion of natural deposits; leaching from wood preservatives.', cite: 'EPA drinking water regulations table' }),
-  nitrate: Object.freeze({ text: 'Runoff from fertilizer use; leaking from septic tanks and sewage; erosion of natural deposits.', cite: 'EPA drinking water regulations table' }),
-  arsenic: Object.freeze({ text: 'Erosion of natural deposits; runoff from orchards; runoff from glass and electronics production wastes.', cite: 'EPA drinking water regulations table' }),
-  ecoli: Object.freeze({ text: 'Human and animal fecal waste.', cite: 'EPA drinking water regulations table' }),
-  pfas: Object.freeze({ text: 'Industrial releases, firefighting foam, and landfill or wastewater discharges.', cite: 'EPA PFAS rule (2024)' }),
+  lead: Object.freeze({
+    text: 'Corrosion of household plumbing systems; erosion of natural deposits.',
+    textEs: 'Corrosión de las tuberías domésticas; erosión de depósitos naturales.',
+    cite: 'EPA drinking water regulations table',
+    citeEs: 'tabla de normas de agua potable de la EPA',
+  }),
+  copper: Object.freeze({
+    text: 'Corrosion of household plumbing systems; erosion of natural deposits; leaching from wood preservatives.',
+    textEs: 'Corrosión de las tuberías domésticas; erosión de depósitos naturales; lixiviación de preservantes de madera.',
+    cite: 'EPA drinking water regulations table',
+    citeEs: 'tabla de normas de agua potable de la EPA',
+  }),
+  nitrate: Object.freeze({
+    text: 'Runoff from fertilizer use; leaking from septic tanks and sewage; erosion of natural deposits.',
+    textEs: 'Escorrentía por uso de fertilizantes; fugas de fosas sépticas y aguas residuales; erosión de depósitos naturales.',
+    cite: 'EPA drinking water regulations table',
+    citeEs: 'tabla de normas de agua potable de la EPA',
+  }),
+  arsenic: Object.freeze({
+    text: 'Erosion of natural deposits; runoff from orchards; runoff from glass and electronics production wastes.',
+    textEs: 'Erosión de depósitos naturales; escorrentía de huertos; escorrentía de residuales de producción de vidrio y electrónica.',
+    cite: 'EPA drinking water regulations table',
+    citeEs: 'tabla de normas de agua potable de la EPA',
+  }),
+  ecoli: Object.freeze({
+    text: 'Human and animal fecal waste.',
+    textEs: 'Materia fecal humana y animal.',
+    cite: 'EPA drinking water regulations table',
+    citeEs: 'tabla de normas de agua potable de la EPA',
+  }),
+  pfas: Object.freeze({
+    text: 'Industrial releases, firefighting foam, and landfill or wastewater discharges.',
+    textEs: 'Descargas industriales, espuma contra incendios y descargas de rellenos sanitarios o aguas residuales.',
+    cite: 'EPA PFAS rule (2024)',
+    citeEs: 'norma de PFAS de la EPA (2024)',
+  }),
 });
 
 const ADVISORY_WORDS = { boil: 'boil', 'do-not-drink': 'do-not-drink', 'do-not-use': 'do-not-use' };
+const ADVISORY_WORDS_ES = { boil: 'hervir el agua', 'do-not-drink': 'no beber el agua', 'do-not-use': 'no usar el agua' };
+const PFAS_NAMES = Object.freeze({ pfhxs: 'PFHxS', pfna: 'PFNA', genx: 'GenX', pfbs: 'PFBS' });
 const FLAGGED = new Set(['above', 'at']);
+const PAIR_DRAWS = new Set(['first-draw', 'flushed']);
 
 function sig3(n) {
   return String(Number(n.toPrecision(3)));
+}
+
+function sig3Es(n) {
+  return sig3(n).replace('.', ',');
+}
+
+function esDecimal(value) {
+  return String(value).replace('.', ',');
+}
+
+function listEn(items) {
+  return items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}` : items[0];
+}
+
+function listEs(items) {
+  return items.length > 1 ? `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}` : items[0];
 }
 
 export function benchmarkRatio(result) {
@@ -64,6 +114,46 @@ export function benchmarkRatio(result) {
 
 function resultFor(screen, id) {
   return screen.results.find(result => result.id === id);
+}
+
+function pairedLeadRows(samples, sample, active) {
+  if (!sample.pairId || !PAIR_DRAWS.has(sample.drawType)) return [];
+  return samples
+    .map((other, index) => ({ other, index }))
+    .filter(({ other, index }) => index !== active
+      && other.pairId === sample.pairId
+      && PAIR_DRAWS.has(other.drawType)
+      && other.drawType !== sample.drawType
+      && other.values?.lead != null);
+}
+
+function mixtureWording(mix) {
+  const quantified = mix.terms.filter(term => term.quantified && term.quotient !== null && Number(term.quotient) > 0);
+  const positive = mix.terms.filter(term => term.quotient !== null && Number(term.quotient) > 0);
+  const qnames = quantified.map(term => PFAS_NAMES[term.id]);
+  const missingNames = mix.missing.map(id => PFAS_NAMES[id]);
+  const partialEn = mix.partial
+    ? ` ${listEn(missingNames)} ${missingNames.length === 1 ? 'is' : 'are'} unreported, so this is a partial sum and a lower bound.`
+    : '';
+  const partialEs = mix.partial
+    ? ` ${listEs(missingNames)} no ${missingNames.length === 1 ? 'está reportado' : 'están reportados'}, así que esta es una suma parcial y una cota inferior.`
+    : '';
+  if (mix.epaMixture) {
+    return {
+      title: mix.partial ? 'Quantified PFAS mixture already passes the lower-bound screen' : 'Quantified PFAS mixture passes the Hazard Index screen',
+      titleEs: mix.partial ? 'Una mezcla cuantificada de PFAS ya supera la evaluación de cota inferior' : 'Una mezcla cuantificada de PFAS supera la evaluación del Índice de Peligro',
+      evidence: `${listEn(qnames)} are at or above their practical quantitation levels. The multi-constituent Hazard Index is ${mix.raw}, above 1.${partialEn}`,
+      evidenceEs: `${listEs(qnames)} están en sus niveles prácticos de cuantificación o por encima de ellos. El Índice de Peligro multiconstituyente es ${esDecimal(mix.raw)}, superior a 1.${partialEs}`,
+    };
+  }
+  const driver = quantified[0] ?? positive[0];
+  const driverName = driver ? PFAS_NAMES[driver.id] : 'PFAS';
+  return {
+    title: mix.partial ? 'Partial PFAS sum passes the screen' : 'One PFAS drives the screening sum',
+    titleEs: mix.partial ? 'Una suma parcial de PFAS supera la evaluación' : 'Un solo PFAS impulsa la suma de evaluación',
+    evidence: `${driverName} is the only mixture constituent at or above its practical quantitation level. The reported screening sum is ${mix.raw}, above 1. This is a single-compound screening signal, not EPA's multi-constituent Hazard Index mixture.${partialEn}`,
+    evidenceEs: `${driverName} es el único constituyente de la mezcla en su nivel práctico de cuantificación o por encima de él. La suma de evaluación reportada es ${esDecimal(mix.raw)}, superior a 1. Esta es una señal de evaluación de un solo compuesto, no la mezcla multiconstituyente del Índice de Peligro de la EPA.${partialEs}`,
+  };
 }
 
 // One finding per pattern, most urgent first. Wording says "points to" and
@@ -82,7 +172,9 @@ export function diagnose({ samples, screens, active = 0 }) {
       title: 'A reported advisory comes first',
       titleEs: 'Un aviso reportado tiene prioridad',
       evidence: `A ${ADVISORY_WORDS[sample.advisory]} advisory was entered for this tap.`,
+      evidenceEs: `Se ingresó un aviso de ${ADVISORY_WORDS_ES[sample.advisory]} para este grifo.`,
       action: 'Follow the official notice before anything below. The patterns here are for follow-up with the water system.',
+      actionEs: 'Siga el aviso oficial antes que cualquier paso posterior. Estos patrones sirven para dar seguimiento con el sistema de agua.',
       cite: null,
     });
   }
@@ -98,7 +190,11 @@ export function diagnose({ samples, screens, active = 0 }) {
       evidence: `E. coli is present in this sample.${nitrateHigh
         ? ` High nitrate in the same sample fits runoff, septic, or sewage water reaching the supply, as after a flood.`
         : ''}`,
+      evidenceEs: `E. coli está presente en esta muestra.${nitrateHigh
+        ? ` El nitrato alto en la misma muestra concuerda con agua de escorrentía, séptica o residual que llega al suministro, como después de una inundación.`
+        : ''}`,
       action: 'Use bottled water for drinking and formula, and report the result to the water system and health department now.',
+      actionEs: 'Use agua embotellada para beber y preparar fórmula, y reporte ahora el resultado al sistema de agua y al departamento de salud.',
       cite: SOURCE_HINTS.ecoli,
     });
   }
@@ -109,7 +205,9 @@ export function diagnose({ samples, screens, active = 0 }) {
       title: 'Nitrate at or above the 10 mg/L as N MCL',
       titleEs: 'Nitrato en el MCL de 10 mg/L como N o por encima de él',
       evidence: `Nitrate is ${nitrate.value} mg/L as N, ${sig3(benchmarkRatio(nitrate))}x the MCL.`,
+      evidenceEs: `El nitrato es ${esDecimal(nitrate.value)} mg/L como N, ${sig3Es(benchmarkRatio(nitrate))} veces el MCL.`,
       action: 'Do not use this water for infant formula. Boiling does not remove nitrate; it concentrates it as water evaporates.',
+      actionEs: 'No use esta agua para preparar fórmula infantil. Hervir no elimina el nitrato; lo concentra a medida que el agua se evapora.',
       cite: SOURCE_HINTS.nitrate,
     });
   }
@@ -117,11 +215,9 @@ export function diagnose({ samples, screens, active = 0 }) {
   const lead = resultFor(screen, 'lead');
   if (lead && FLAGGED.has(lead.status)) {
     const here = Number(lead.value);
-    const others = samples
-      .map((other, index) => ({ other, index }))
-      .filter(({ other, index }) => index !== active && other.values?.lead != null);
-    if (others.length) {
-      const low = others.reduce((best, item) =>
+    const paired = pairedLeadRows(samples, sample, active);
+    if (paired.length) {
+      const low = paired.reduce((best, item) =>
         (Number(item.other.values.lead) < Number(best.other.values.lead) ? item : best));
       const lowValue = Number(low.other.values.lead);
       const share = here > 0 ? lowValue / here : 1;
@@ -130,29 +226,53 @@ export function diagnose({ samples, screens, active = 0 }) {
           id: 'lead-local', tone: 'caution',
           title: 'Lead points to plumbing near this tap',
           titleEs: 'El plomo apunta a la plomería cerca de este grifo',
-          evidence: `Lead is ${lead.value} ppb here but ${low.other.values.lead} ppb at ${low.other.tap}, ${Math.round((1 - share) * 100)}% lower in the same data set. Lead carried in by the source water would show up at every tap.`,
+          evidence: `Lead is ${lead.value} ppb in this ${sample.drawType} row but ${low.other.values.lead} ppb in its paired ${low.other.drawType} row at ${low.other.tap}, ${Math.round((1 - share) * 100)}% lower. Lead carried in by the source water would show up in both paired draws.`,
+          evidenceEs: `El plomo es ${esDecimal(lead.value)} ppb en esta fila de ${sample.drawType === 'first-draw' ? 'primera extracción' : 'purga'}, pero ${esDecimal(low.other.values.lead)} ppb en su fila pareada de ${low.other.drawType === 'first-draw' ? 'primera extracción' : 'purga'} en ${low.other.tap}, un ${Math.round((1 - share) * 100)}% menos. El plomo traído por el agua de origen aparecería en ambas extracciones pareadas.`,
           action: 'Share the pair with the water system, check faucets, fixtures, and the service line, and resample. Flushing can lower lead but cannot guarantee it is gone.',
+          actionEs: 'Comparta el par con el sistema de agua, revise grifos, accesorios y la línea de servicio, y vuelva a muestrear. Dejar correr el agua puede reducir el plomo, pero no garantiza que desaparezca.',
           cite: SOURCE_HINTS.lead,
         });
       } else {
         add({
           id: 'lead-shared', tone: 'caution',
-          title: 'Lead stays high across the taps tested',
-          titleEs: 'El plomo sigue alto en los grifos analizados',
-          evidence: `The lowest other tap, ${low.other.tap}, still reads ${low.other.values.lead} ppb (${Math.round(share * 100)}% of this tap), so one fixture is unlikely to explain it. A shared service line or corrosive water fits better.`,
+          title: 'Lead stays high across the paired draws',
+          titleEs: 'El plomo sigue alto en las extracciones pareadas',
+          evidence: `The paired ${low.other.drawType} row, ${low.other.tap}, still reads ${low.other.values.lead} ppb (${Math.round(share * 100)}% of this tap), so one fixture is unlikely to explain it. Shared plumbing or corrosive water fits better.`,
+          evidenceEs: `La fila pareada de ${low.other.drawType === 'first-draw' ? 'primera extracción' : 'purga'}, ${low.other.tap}, aún marca ${esDecimal(low.other.values.lead)} ppb (${Math.round(share * 100)}% de este grifo), por lo que un solo accesorio difícilmente lo explica. Una plomería compartida o agua corrosiva concuerda mejor.`,
           action: 'Ask the water system about lead service lines and corrosion control, and resample a first-draw and flushed pair.',
+          actionEs: 'Pregunte al sistema de agua sobre líneas de servicio de plomo y control de corrosión, y vuelva a muestrear un par de primera extracción y purga.',
           cite: SOURCE_HINTS.lead,
         });
       }
     } else {
-      add({
-        id: 'lead-unpaired', tone: 'caution',
-        title: 'Lead at or above the 10 ppb action level',
-        titleEs: 'Plomo en el nivel de acción de 10 ppb o por encima de él',
-        evidence: `Lead is ${lead.value} ppb, ${sig3(benchmarkRatio(lead))}x the action level. With one tap, plumbing and source water cannot be told apart.`,
-        action: 'Collect a first-draw and a flushed sample from this tap to separate plumbing from source water.',
-        cite: SOURCE_HINTS.lead,
-      });
+      const others = samples
+        .map((other, index) => ({ other, index }))
+        .filter(({ other, index }) => index !== active && other.values?.lead != null);
+      if (others.length) {
+        const low = others.reduce((best, item) =>
+          (Number(item.other.values.lead) < Number(best.other.values.lead) ? item : best));
+        add({
+          id: 'lead-contrast', tone: 'caution',
+          title: 'Lead contrast cannot be tied to plumbing',
+          titleEs: 'El contraste de plomo no puede vincularse a la plomería',
+          evidence: `Lead is ${lead.value} ppb here. Another row, ${low.other.tap}, reads ${low.other.values.lead} ppb, but the rows do not carry matching first-draw and flushed pair metadata, so the contrast cannot separate local plumbing from source water.`,
+          evidenceEs: `El plomo es ${esDecimal(lead.value)} ppb aquí. Otra fila, ${low.other.tap}, marca ${esDecimal(low.other.values.lead)} ppb, pero las filas no tienen metadatos pareados coincidentes de primera extracción y purga, así que el contraste no puede separar la plomería local del agua de origen.`,
+          action: 'Collect a first-draw and flushed pair from this tap, or add matching pair_id and draw_type values before using the contrast.',
+          actionEs: 'Recolecte un par de primera extracción y purga de este grifo, o agregue valores coincidentes de pair_id y draw_type antes de usar el contraste.',
+          cite: SOURCE_HINTS.lead,
+        });
+      } else {
+        add({
+          id: 'lead-unpaired', tone: 'caution',
+          title: 'Lead at or above the 10 ppb action level',
+          titleEs: 'Plomo en el nivel de acción de 10 ppb o por encima de él',
+          evidence: `Lead is ${lead.value} ppb, ${sig3(benchmarkRatio(lead))}x the action level. Without a paired draw, plumbing and source water cannot be told apart.`,
+          evidenceEs: `El plomo es ${esDecimal(lead.value)} ppb, ${sig3Es(benchmarkRatio(lead))} veces el nivel de acción. Sin una extracción pareada, no se pueden distinguir la plomería y el agua de origen.`,
+          action: 'Collect a first-draw and a flushed sample from this tap to separate plumbing from source water.',
+          actionEs: 'Recolecte una muestra de primera extracción y una de purga de este grifo para separar la plomería del agua de origen.',
+          cite: SOURCE_HINTS.lead,
+        });
+      }
     }
   }
 
@@ -163,7 +283,9 @@ export function diagnose({ samples, screens, active = 0 }) {
       title: 'Copper points to corroding plumbing',
       titleEs: 'El cobre apunta a plomería con corrosión',
       evidence: `Copper is ${copper.value} ppb, ${sig3(benchmarkRatio(copper))}x the 1300 ppb action level. Copper builds up while water sits in copper pipes.`,
+      evidenceEs: `El cobre es ${esDecimal(copper.value)} ppb, ${sig3Es(benchmarkRatio(copper))} veces el nivel de acción de 1300 ppb. El cobre se acumula mientras el agua permanece en tuberías de cobre.`,
       action: 'Ask the water system about corrosion control and resample after the water has run.',
+      actionEs: 'Pregunte al sistema de agua sobre el control de corrosión y vuelva a muestrear después de dejar correr el agua.',
       cite: SOURCE_HINTS.copper,
     });
   }
@@ -175,7 +297,9 @@ export function diagnose({ samples, screens, active = 0 }) {
       title: 'Arsenic at or above the 10 ppb MCL',
       titleEs: 'Arsénico en el MCL de 10 ppb o por encima de él',
       evidence: `Arsenic is ${arsenic.value} ppb, ${sig3(benchmarkRatio(arsenic))}x the MCL. It often comes from natural deposits in the ground.`,
+      evidenceEs: `El arsénico es ${esDecimal(arsenic.value)} ppb, ${sig3Es(benchmarkRatio(arsenic))} veces el MCL. A menudo proviene de depósitos naturales en el suelo.`,
       action: 'Test the source itself, and ask the lab which arsenic form is present before choosing treatment.',
+      actionEs: 'Analice la fuente misma y pregunte al laboratorio qué forma de arsénico está presente antes de elegir un tratamiento.',
       cite: SOURCE_HINTS.arsenic,
     });
   }
@@ -189,21 +313,24 @@ export function diagnose({ samples, screens, active = 0 }) {
       title: 'PFAS at or above an individual MCL',
       titleEs: 'PFAS en un MCL individual o por encima de él',
       evidence: `${singles.map(result => `${result.label} ${result.value} ppt (${sig3(benchmarkRatio(result))}x)`).join(', ')}.`,
+      evidenceEs: `${singles.map(result => `${result.label} ${esDecimal(result.value)} ppt (${sig3Es(benchmarkRatio(result))} veces)`).join(', ')}.`,
       action: 'Boiling does not remove PFAS. Share the result with the water system; a filter only counts where its own certification covers these compounds.',
+      actionEs: 'Hervir no elimina los PFAS. Comparta el resultado con el sistema de agua; un filtro solo cuenta cuando su propia certificación cubre estos compuestos.',
       cite: SOURCE_HINTS.pfas,
     });
   }
 
   const mix = screen.mixture;
   if (mix && ['above', 'above-lower-bound'].includes(mix.status)) {
+    const wording = mixtureWording(mix);
     add({
       id: 'pfas-mixture', tone: 'caution',
-      title: 'Several PFAS add up past the Hazard Index',
-      titleEs: 'Varios PFAS juntos superan el Índice de Peligro',
-      evidence: singles.length
-        ? `The Hazard Index is ${mix.raw}${mix.status === 'above-lower-bound' ? ' even before the unreported terms' : ''}, above 1.`
-        : `No single PFAS is above its own MCL, yet PFHxS, PFNA, GenX, and PFBS together give a Hazard Index of ${mix.raw}${mix.status === 'above-lower-bound' ? ' even before the unreported terms' : ''}, above 1.`,
+      title: wording.title,
+      titleEs: wording.titleEs,
+      evidence: wording.evidence,
+      evidenceEs: wording.evidenceEs,
       action: 'Boiling does not remove PFAS. Ask the water system for its running annual average; one sample is a screen, not a violation.',
+      actionEs: 'Hervir no elimina los PFAS. Pida al sistema de agua su promedio anual móvil; una muestra es una evaluación, no una infracción.',
       cite: SOURCE_HINTS.pfas,
     });
   }
@@ -215,7 +342,9 @@ export function diagnose({ samples, screens, active = 0 }) {
         title: 'The pattern check is limited',
         titleEs: 'La revisión de patrones es limitada',
         evidence: `${screen.unknowns.length} field${screen.unknowns.length === 1 ? ' is' : 's are'} unreported, so a hidden pattern cannot be ruled out.`,
+        evidenceEs: `${screen.unknowns.length} ${screen.unknowns.length === 1 ? 'campo no está reportado' : 'campos no están reportados'}, así que no se puede descartar un patrón oculto.`,
         action: 'Ask the lab for the missing fields before treating this tap as screened.',
+        actionEs: 'Pida al laboratorio los campos faltantes antes de considerar evaluado este grifo.',
         cite: null,
       });
     } else {
@@ -224,7 +353,9 @@ export function diagnose({ samples, screens, active = 0 }) {
         title: 'No contamination pattern in these readings',
         titleEs: 'Sin patrón de contaminación en estas lecturas',
         evidence: 'Every reported reading with an individual benchmark is below it. Only the measured fields were checked.',
+        evidenceEs: 'Cada lectura reportada con un nivel individual está por debajo de él. Solo se revisaron los campos medidos.',
         action: 'Keep the routine sampling schedule and retest after plumbing work, flooding, or a change in taste or color.',
+        actionEs: 'Mantenga el calendario habitual de muestreo y repita la prueba después de trabajos de plomería, inundaciones o un cambio de sabor o color.',
         cite: null,
       });
     }

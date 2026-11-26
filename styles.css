@@ -2086,7 +2086,7 @@ input[type="text"].lab-link {
 
 @page {
   size: letter;
-  margin: 8mm 10mm 7mm;
+  margin: 6mm 8mm 6mm;
 }
 
 @media print {
@@ -2110,8 +2110,8 @@ input[type="text"].lab-link {
     overflow-wrap: anywhere;
     color: #000;
     font-family: var(--sans);
-    font-size: 8.4pt;
-    line-height: 1.34;
+    font-size: 7.1pt;
+    line-height: 1.18;
   }
 
   .print-sheet .ps-head {
@@ -2120,36 +2120,36 @@ input[type="text"].lab-link {
     align-items: baseline;
     gap: 12pt;
     border-bottom: 2pt solid #000;
-    padding-bottom: 3pt;
-    margin-bottom: 6pt;
+    padding-bottom: 2pt;
+    margin-bottom: 1pt;
   }
 
   .print-sheet h1 {
-    font-size: 15pt;
+    font-size: 11.5pt;
   }
 
   .print-sheet .ps-brand {
-    font-size: 8pt;
+    font-size: 6.8pt;
     font-weight: 700;
     margin: 0;
     white-space: nowrap;
   }
 
   .print-sheet h2 {
-    font-size: 9.8pt;
-    margin: 5pt 0 2pt;
+    font-size: 7.8pt;
+    margin: 2pt 0 1pt;
   }
 
   .print-sheet p {
-    margin: 0 0 3pt;
+    margin: 0 0 1.4pt;
     max-width: none;
   }
 
   .print-sheet .ps-tap {
-    font-size: 12pt;
+    font-size: 9.2pt;
     font-weight: 700;
     overflow-wrap: anywhere;
-    margin-bottom: 2pt;
+    margin-bottom: 0.7pt;
   }
 
   .print-sheet .ps-origin {
@@ -2158,14 +2158,16 @@ input[type="text"].lab-link {
 
   .print-sheet .ps-headline {
     font-weight: 700;
-    font-size: 9.6pt;
+    font-size: 7.5pt;
     border: 1pt solid #000;
-    padding: 3pt 6pt;
-    margin: 2pt 0 4pt;
+    padding: 1.5pt 3pt;
+    margin: 1pt 0 2pt;
   }
 
   .print-sheet table {
-    font-size: 8pt;
+    font-size: 6.1pt;
+    table-layout: fixed;
+    width: 100%;
     border-top: 1pt solid #000;
     border-bottom: 1pt solid #000;
   }
@@ -2173,22 +2175,18 @@ input[type="text"].lab-link {
   .print-sheet thead th {
     border-bottom: 1pt solid #000;
     color: #000;
-    font-size: 7.6pt;
-    padding: 2pt 6pt 2pt 0;
+    font-size: 5.8pt;
+    padding: 1pt 2pt 1pt 0;
   }
 
   .print-sheet tbody td {
     border-bottom: 0.5pt solid #bbb;
-    padding: 1.2pt 6pt 1.2pt 0;
+    padding: 0.6pt 2pt 0.6pt 0;
+    overflow-wrap: anywhere;
   }
 
   .print-sheet tr.ps-flag td {
     font-weight: 700;
-  }
-
-  .print-sheet .ps-table td:nth-child(5),
-  .print-sheet .ps-table td:nth-child(6) {
-    white-space: nowrap;
   }
 
   .print-sheet .ps-table td:nth-child(2) {
@@ -2198,21 +2196,45 @@ input[type="text"].lab-link {
 
   .print-sheet .ps-math {
     font-family: var(--mono);
-    font-size: 7.4pt;
-    margin-top: 3pt;
+    font-size: 5.9pt;
+    margin-top: 1pt;
     overflow-wrap: anywhere;
+  }
+
+  .print-sheet .ps-table th:nth-child(1) { width: 13%; }
+  .print-sheet .ps-table th:nth-child(2) { width: 12%; }
+  .print-sheet .ps-table th:nth-child(3) { width: 29%; }
+  .print-sheet .ps-table th:nth-child(4) { width: 6%; }
+  .print-sheet .ps-table th:nth-child(5) { width: 15%; }
+  .print-sheet .ps-table th:nth-child(6) { width: 25%; }
+
+  .print-sheet .ps-diag li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8pt;
+    break-inside: avoid;
+  }
+
+  .print-sheet .ps-diag-lang {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .print-sheet .ps-meta,
+  .print-sheet tr {
+    break-inside: avoid;
   }
 
   .print-sheet .ps-cols,
   .print-sheet .ps-split {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    column-gap: 16pt;
+    column-gap: 8pt;
   }
 
   .print-sheet .ps-split {
     grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-    margin-top: 2pt;
+    margin-top: 1pt;
   }
 
   .print-sheet .ps-lang {
@@ -2222,8 +2244,8 @@ input[type="text"].lab-link {
   .print-sheet .ps-lang + .ps-lang,
   .print-sheet .ps-split > div + div {
     border-left: 0.5pt solid #999;
-    padding-left: 16pt;
-    margin-left: -8pt;
+    padding-left: 8pt;
+    margin-left: -4pt;
   }
 
   .print-sheet .ps-lang > h2:first-child {
@@ -2232,7 +2254,7 @@ input[type="text"].lab-link {
 
   .print-sheet .ps-diag {
     margin: 0;
-    padding-left: 12pt;
+    padding-left: 8pt;
   }
 
   .print-sheet .ps-diag li {
@@ -2242,14 +2264,14 @@ input[type="text"].lab-link {
   .print-sheet .ps-field {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 6pt;
+    gap: 4pt;
     align-items: end;
-    margin: 0 0 4pt;
+    margin: 0 0 2pt;
   }
 
   .print-sheet .ps-blank {
     border-bottom: 0.75pt solid #000;
-    min-height: 11pt;
+    min-height: 7pt;
   }
 
   .print-sheet .ps-checks {
@@ -2285,8 +2307,8 @@ input[type="text"].lab-link {
   }
 
   .print-sheet .ps-meta {
-    font-size: 7pt;
-    line-height: 1.3;
+    font-size: 5.3pt;
+    line-height: 1.15;
     color: #333;
     margin: 3pt 0 0;
     border-top: 0.5pt solid #999;
