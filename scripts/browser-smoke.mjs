@@ -188,7 +188,15 @@ try {
     check('action banner present', await evaluate(`document.querySelector('#action h3')?.textContent.length > 0`));
     check('masthead has no tagline', await evaluate(
       `document.querySelector('.masthead h1').nextElementSibling === null || document.querySelector('.masthead h1').nextElementSibling.classList.contains('masthead-side')`));
-    check('nine source links rendered', await evaluate(`document.querySelectorAll('#source-list a').length === 9`));
+    check('ten source links rendered', await evaluate(`document.querySelectorAll('#source-list a').length === 10`));
+    check('scenario cards state their screened result', await evaluate(
+      `[...document.querySelectorAll('#preset-strip .scenario-status')].map(n => n.textContent).join('|') === 'Lead above in 1 of 3 taps|PFAS mixture above benchmark|Boil notice, E. coli present|Within screened benchmarks'`));
+    check('readout shows four instrument cells', await evaluate(
+      `document.querySelectorAll('#readout .readout-cell').length === 4 && document.querySelector('#readout .readout-n').textContent === '2.46\u00d7'`));
+    check('lead row shows ratio gauge and WHO reference', await evaluate(
+      `document.querySelector('#results-body tr .ratio-n').textContent === '2.46\u00d7' && document.querySelector('#results-body tr .gauge') !== null && document.querySelector('#results-body tr .ref-who').textContent.includes('WHO 10 ppb')`));
+    check('diagnostic pairs the first-draw and flushed taps', await evaluate(
+      `document.querySelector('#diagnostic [data-diag="lead-local"]')?.textContent.includes('87% lower') === true`));
     check('row headers use th scope=row', await evaluate(
       `document.querySelectorAll('#results-body th[scope="row"]').length === 10`));
     check('no horizontal overflow at 1280', await evaluate(`document.documentElement.scrollWidth <= 1280`));
@@ -199,6 +207,10 @@ try {
     await click(`#preset-strip button:nth-of-type(${stormIndex + 1})`);
     check('storm preset applies', await waitFor(
       `document.querySelector('#results-caption').textContent.includes('North block kitchen')`));
+    check('storm diagnostic orders advisory, fecal, nitrate', await evaluate(
+      `[...document.querySelectorAll('#diagnostic [data-diag]')].map(n => n.dataset.diag).join(',') === 'advisory,fecal,nitrate'`));
+    check('storm nitrate is above EPA and WHO', await evaluate(
+      `[...document.querySelectorAll('#results-body tr')][2].querySelector('.who-status').textContent.trim() === 'above'`));
     check('co-occurrence urgent banner', await evaluate(
       `document.querySelector('#action').className.includes('urgent') && document.querySelector('#action h3').textContent === 'Do not boil this tap water for drinking or infant formula'`));
 
@@ -301,6 +313,10 @@ try {
     // Print sheet content and scroll-top before screenshots.
     check('print sheet has EN and ES blocks', await evaluate(
       `document.querySelector('#print-sheet [lang="en"] p.ps-headline')?.textContent.length > 0 && document.querySelector('#print-sheet [lang="es"] p.ps-headline')?.textContent.length > 0`));
+    check('print sheet is a field audit with readings, sources, and record', await evaluate(
+      `document.querySelector('#print-sheet h1').textContent === 'Community Water Field Audit Sheet' && document.querySelectorAll('#print-sheet .ps-table tbody tr').length === 10 && document.querySelectorAll('#print-sheet .ps-diag li').length >= 1 && document.querySelectorAll('#print-sheet .ps-field').length === 4`));
+    check('print sheet WHO cells carry units', await evaluate(
+      `document.querySelector('#print-sheet .ps-table tbody tr td:last-child').textContent.includes('ppb') && [...document.querySelectorAll('#print-sheet .ps-table tbody tr')][2].querySelector('td:last-child').textContent.includes('mg/L as NO3')`));
     check('print sheet marks synthetic preset', await evaluate(
       `document.querySelector('#print-sheet').textContent.includes('Synthetic example / Ejemplo sintético')`));
 

@@ -49,136 +49,143 @@
       <a href="#sample">Samples</a>
       <a href="#report">Report</a>
       <a href="#models">Models</a>
-      <a href="#lab">Lab</a>
       <a href="#sdg6">SDG 6</a>
+      <a href="#lab">Lab</a>
       <a href="#exports">Downloads</a>
       <a href="#sources">Sources</a>
     </nav>
   </div>
 </header>
 
-<div id="preset-strip" class="preset-strip" role="group" aria-label="Synthetic presets"></div>
+<div id="preset-strip" class="preset-strip" role="group" aria-label="Synthetic community scenarios"></div>
 
 <div id="mobile-action" class="mobile-action" hidden></div>
 
-<div class="substrate">
-  <aside id="sample" class="rail" aria-label="Sample entry">
-    <section class="rail-block" aria-labelledby="source-h">
-      <h2 id="source-h">Sample source</h2>
-      <p id="source-note" class="rail-note"></p>
-      <label class="field-label" for="csv-input">CSV text</label>
-      <textarea id="csv-input" rows="9" spellcheck="false" autocomplete="off"
-        aria-describedby="csv-hint"></textarea>
-      <p id="csv-hint" class="hint">Editing the text marks the report stale until you apply it again.</p>
-      <div class="rail-actions">
-        <button type="button" id="apply">Apply CSV</button>
-        <label class="file-label">Upload .csv
-          <input type="file" id="file-input" accept=".csv,text/csv">
+<main id="main">
+  <div class="substrate">
+    <aside id="sample" class="rail" aria-label="Sample entry">
+      <section class="rail-block" aria-labelledby="taps-h">
+        <h2 id="taps-h">Taps</h2>
+        <p id="taps-empty" class="rail-note">No valid samples loaded.</p>
+        <ul id="tap-list" class="tap-list"></ul>
+      </section>
+
+      <section class="rail-block" aria-labelledby="source-h">
+        <h2 id="source-h">Sample source</h2>
+        <p id="source-note" class="rail-note"></p>
+        <label class="field-label" for="csv-input">CSV text</label>
+        <textarea id="csv-input" rows="7" spellcheck="false" autocomplete="off"></textarea>
+        <div class="rail-actions">
+          <button type="button" id="apply">Apply CSV</button>
+          <label class="file-label">Upload .csv
+            <input type="file" id="file-input" accept=".csv,text/csv">
+          </label>
+        </div>
+        <div id="import-errors" class="errors" role="alert" hidden></div>
+      </section>
+
+      <section class="rail-block" aria-labelledby="keys-h">
+        <h2 id="keys-h">Keyboard</h2>
+        <label class="toggle">
+          <input type="checkbox" id="shortcut-toggle">
+          <span>Enable single keys: i opens the file picker, p prints the field audit sheet.</span>
         </label>
+      </section>
+    </aside>
+
+    <div class="main-panel">
+      <section id="report" class="panel" aria-labelledby="report-h" tabindex="-1">
+        <h2 id="report-h">Screen report</h2>
+        <p id="stale-note" class="stale" role="status" hidden>
+          The input changed since this report was applied. Apply the CSV to refresh it.
+        </p>
+        <div id="action" class="action" aria-live="polite"></div>
+        <div id="readout" class="readout"></div>
+        <div class="table-wrap">
+          <table id="results-table" class="stack">
+            <caption id="results-caption"></caption>
+            <thead>
+              <tr>
+                <th scope="col">Contaminant</th>
+                <th scope="col" class="num">Measured</th>
+                <th scope="col">Benchmark</th>
+                <th scope="col" class="num">Ratio</th>
+                <th scope="col">Finding</th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+        <div id="diagnostic" class="diagnostic"></div>
+        <div id="report-notes" class="notes"></div>
+        <p id="print-row" class="print-row">
+          <button type="button" id="print-sheet-btn">Print field audit sheet (EN/ES)</button>
+        </p>
+      </section>
+
+      <div id="models">
+        <section id="mixture" class="panel" aria-labelledby="mixture-h">
+          <h2 id="mixture-h">PFAS Hazard Index</h2>
+          <div id="mixture-body"></div>
+        </section>
+
+        <section id="evaporation" class="panel" aria-labelledby="evap-h">
+          <h2 id="evap-h">Evaporation model</h2>
+          <div id="evap-body"></div>
+        </section>
+
+        <section id="flush" class="panel" aria-labelledby="flush-h">
+          <h2 id="flush-h">First-draw flush</h2>
+          <div id="flush-body"></div>
+        </section>
+
+        <section id="treatment" class="panel" aria-labelledby="treatment-h">
+          <h2 id="treatment-h">Filter comparison</h2>
+          <div id="treatment-body"></div>
+        </section>
       </div>
-      <div id="import-errors" class="errors" role="alert" hidden></div>
+    </div>
+  </div>
+
+  <div class="bench">
+    <section id="sdg6" class="panel" aria-labelledby="sdg6-h" hidden>
+      <h2 id="sdg6-h">SDG 6 clean-water equity lab</h2>
+      <div id="sdg6-body"></div>
     </section>
 
-    <section class="rail-block" aria-labelledby="taps-h">
-      <h2 id="taps-h">Taps</h2>
-      <p id="taps-empty" class="rail-note">No valid samples loaded.</p>
-      <ul id="tap-list" class="tap-list"></ul>
+    <section id="lab" class="panel lab-panel" aria-labelledby="lab-h" hidden>
+      <h2 id="lab-h">Mixture and sensitivity lab</h2>
+      <div id="lab-body"></div>
     </section>
 
-    <section class="rail-block" aria-labelledby="keys-h">
-      <h2 id="keys-h">Keyboard</h2>
-      <label class="toggle">
-        <input type="checkbox" id="shortcut-toggle">
-        <span>Enable single keys: i opens the file picker, p prints the tap sheet.</span>
-      </label>
-    </section>
-  </aside>
-
-  <main id="main" class="main-panel">
-    <section id="report" class="panel" aria-labelledby="report-h" tabindex="-1">
-      <h2 id="report-h">Screen report</h2>
-      <p id="stale-note" class="stale" role="status" hidden>
-        The input changed since this report was applied. Apply the CSV to refresh it.
-      </p>
-      <div id="action" class="action" aria-live="polite"></div>
-      <div class="table-wrap">
-        <table id="results-table" class="stack">
-          <caption id="results-caption"></caption>
-          <thead>
-            <tr>
-              <th scope="col">Contaminant</th>
-              <th scope="col" class="num">Measured</th>
-              <th scope="col">Reference</th>
-              <th scope="col">Finding</th>
-            </tr>
-          </thead>
-          <tbody id="results-body"></tbody>
-        </table>
-      </div>
-      <div id="report-notes" class="notes"></div>
-      <p id="print-row" class="print-row">
-        <button type="button" id="print-sheet-btn">Print tap safety sheet</button>
-        <span class="hint">One page, English and Spanish.</span>
-      </p>
-    </section>
-
-    <div id="models">
-      <section id="mixture" class="panel" aria-labelledby="mixture-h">
-        <h2 id="mixture-h">Hazard index</h2>
-        <div id="mixture-body"></div>
+    <div class="closing">
+      <section id="exports" class="panel" aria-labelledby="exports-h">
+        <h2 id="exports-h">Downloads</h2>
+        <p class="rail-note">Exports cover every loaded tap, not only the selected one.</p>
+        <div class="rail-actions">
+          <button type="button" id="download-csv">Audit CSV</button>
+          <button type="button" id="download-bundle">Fingerprinted JSON bundle</button>
+        </div>
+        <p id="fingerprint" class="fingerprint" hidden></p>
+        <p id="export-error" class="errors-inline" role="alert" hidden></p>
       </section>
 
-      <section id="evaporation" class="panel" aria-labelledby="evap-h">
-        <h2 id="evap-h">Evaporation model</h2>
-        <div id="evap-body"></div>
-      </section>
-
-      <section id="flush" class="panel" aria-labelledby="flush-h">
-        <h2 id="flush-h">First-draw flush</h2>
-        <div id="flush-body"></div>
-      </section>
-
-      <section id="treatment" class="panel" aria-labelledby="treatment-h">
-        <h2 id="treatment-h">Filter comparison</h2>
-        <div id="treatment-body"></div>
-      </section>
-
-      <section id="lab" class="panel lab-panel" aria-labelledby="lab-h" hidden>
-        <h2 id="lab-h">Mixture and sensitivity lab</h2>
-        <div id="lab-body"></div>
-      </section>
-
-      <section id="sdg6" class="panel" aria-labelledby="sdg6-h" hidden>
-        <h2 id="sdg6-h">SDG 6 clean-water equity lab</h2>
-        <div id="sdg6-body"></div>
+      <section id="sources" class="panel" aria-labelledby="sources-h">
+        <h2 id="sources-h">Sources</h2>
+        <p class="rail-note">
+          Screening context only. One sample from one tap is never a compliance
+          determination, a 90th-percentile result, or a potability clearance. The
+          2024 PFAS rule judges running annual averages and applies
+          significant-figure rounding; this screen shows that rounding as context
+          and never rounds or discards a reading. EPA proposed changes in 2026;
+          this catalog is a 2024 snapshot, not a live regulatory feed. WHO values
+          are shown for comparison only; findings use the EPA benchmarks.
+        </p>
+        <ul id="source-list" class="source-list"></ul>
       </section>
     </div>
-
-    <section id="exports" class="panel" aria-labelledby="exports-h">
-      <h2 id="exports-h">Downloads</h2>
-      <p class="rail-note">Exports cover every loaded tap, not only the selected one.</p>
-      <div class="rail-actions">
-        <button type="button" id="download-csv">Audit CSV</button>
-        <button type="button" id="download-bundle">Fingerprinted JSON bundle</button>
-      </div>
-      <p id="fingerprint" class="fingerprint" hidden></p>
-      <p id="export-error" class="errors-inline" role="alert" hidden></p>
-    </section>
-
-    <section id="sources" class="panel" aria-labelledby="sources-h">
-      <h2 id="sources-h">Sources</h2>
-      <p class="rail-note">
-        Screening context only. One sample from one tap is never a compliance
-        determination, a 90th-percentile result, or a potability clearance. The
-        2024 PFAS rule judges running annual averages and applies
-        significant-figure rounding; this screen shows that rounding as context
-        and never rounds or discards a reading. EPA proposed changes in 2026;
-        this catalog is a 2024 snapshot, not a live regulatory feed.
-      </p>
-      <ul id="source-list" class="source-list"></ul>
-    </section>
-  </main>
-</div>
+  </div>
+</main>
 
 <div id="print-sheet" class="print-sheet" aria-hidden="true"></div>
 

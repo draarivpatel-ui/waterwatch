@@ -2,8 +2,10 @@
 
 A fully offline field notebook that screens single-tap drinking-water lab results
 against federal screening benchmarks. It reads a strict CSV of measurements,
-shows which readings sit above their reference levels, models simple what-if
-scenarios, and prints a bilingual (English/Spanish) tap-safety one-pager.
+shows which readings sit above their reference levels, compares the inorganic
+readings with WHO guideline values, points to likely contamination sources,
+models simple what-if scenarios, and prints a bilingual (English/Spanish)
+one-page community water field audit sheet.
 A mixture and sensitivity lab compares all four presets against every
 benchmark, runs deterministic self-tests in the page, and exports a
 SHA-256-stamped lab brief that a `#ww=` bookmark link restores. An SDG 6
@@ -34,9 +36,9 @@ these files locally to run without internet.
 npm test
 ```
 
-Node 18 or newer, no packages to install. The suite has 696 tests, 328 of
-them covering the two lab modules, alongside the 32 deterministic self-tests
-the page itself runs.
+Node 18 or newer, no packages to install. The suite has 733 tests, 328 of
+them covering the two lab modules and 37 covering the source diagnostic,
+alongside the 32 deterministic self-tests the page itself runs.
 
 ## What it does and does not claim
 
@@ -66,6 +68,14 @@ the page itself runs.
   product's test data does not verify it.
 - EPA proposed changes in 2026; this catalog is a 2024 snapshot, not a live
   regulatory feed.
+- WHO guideline values (lead, copper, nitrate, arsenic) come from the 2022
+  Guidelines for drinking-water quality and are shown for comparison only;
+  every finding uses the EPA benchmark. WHO sets no final guideline value for
+  these PFAS, so PFAS rows compare to EPA alone.
+- "Likely sources and field steps" are screening hints built from the EPA
+  drinking water regulations table and simple patterns in the loaded taps
+  (for example a first-draw tap far above its flushed pair). They point to
+  where to look; they never prove a source.
 - Every export is tagged with its origin: `synthetic` for the bundled presets
   and `unverified-input` for anything the user typed, pasted, or uploaded.
 - The lab's scenario matrices are teaching models. During a reported advisory
@@ -100,6 +110,8 @@ pfoa_ppt, pfos_ppt, pfhxs_ppt, pfna_ppt, genx_ppt, pfbs_ppt
 - `src/app.js`: UI state, rendering, exports, print sheet, keyboard shortcuts.
 - `src/shortcuts.js`: guarded `i`/`p` keyboard actions, off by default.
 - `src/presets.js`: the four synthetic preset CSVs.
+- `src/diagnostic.js`: WHO guideline comparison, the contamination-source
+  diagnostic, and the scenario summaries on the preset cards.
 - `src/exports.js`: audit CSV and fingerprinted JSON bundle writers, each
   flagged `synthetic` or `unverified-input` from where the data came.
 - `src/mixture-lab.js`: pure-JS SHA-256, the `#ww=` bookmark codec, the preset
@@ -109,7 +121,7 @@ pfoa_ppt, pfos_ppt, pfhxs_ppt, pfna_ppt, genx_ppt, pfbs_ppt
   6.3.2 and 6.4.2, the intervention planner and fit model, and its own
   in-page self-tests.
 - `test/`: node:test suites for the parser, shortcuts, engine, exports,
-  hygiene, and both lab modules.
+  hygiene, the source diagnostic, and both lab modules.
 - `scripts/browser-smoke.mjs`: headless-Chrome smoke run that captures the
   screenshots in `docs/`.
 - `scripts/sdg6-audit.mjs`: headless-Chrome audit of the SDG 6 lab: real
@@ -137,3 +149,6 @@ pfoa_ppt, pfos_ppt, pfhxs_ppt, pfna_ppt, genx_ppt, pfbs_ppt
   https://www.cdc.gov/breastfeeding/php/guidelines-recommendations/feeding-your-child-safely-during-a-disaster.html
 - EPA, identifying drinking-water filters certified to reduce PFAS:
   https://www.epa.gov/water-research/identifying-drinking-water-filters-certified-reduce-pfas
+- WHO, Guidelines for drinking-water quality, fourth edition incorporating the
+  first and second addenda (2022):
+  https://www.who.int/publications/i/item/9789240045064

@@ -980,9 +980,17 @@ export function mountLab(root, hooks = {}) {
       return t.cell[cell.kind] ?? cell.kind;
     };
     const cellStatus = cell => (cell.status ? statusWord(cell.status) : '');
+    // Row names double as focus controls, a full-size equivalent of the chart bars.
+    const focusPick = id => {
+      const button = el('button', {
+        type: 'button', class: 'lab-pick lab-focus-pick', 'aria-pressed': String(lab.focus === id), text: chemName(id),
+      });
+      button.addEventListener('click', () => choose({ focus: id }));
+      return button;
+    };
     for (const row of matrix.rows) {
       body.append(el('tr', { class: lab.focus === row.id ? 'lab-active' : '' }, [
-        el('th', { scope: 'row', text: chemName(row.id) }),
+        el('th', { scope: 'row' }, focusPick(row.id)),
         el('td', { class: 'num' }, [
           document.createTextNode(row.baseline.value ?? 'n/r'),
           row.baseline.value === null ? null : el('span', { class: 'unit', text: row.unit }),
@@ -995,8 +1003,8 @@ export function mountLab(root, hooks = {}) {
     const hiCell = hi.cell.kind === 'modeled'
       ? `${fmtValue(hi.cell.value)}${hi.cell.lowerBound ? ' (lower bound)' : ''}`
       : (t.cell[hi.cell.kind] ?? hi.cell.kind);
-    body.append(el('tr', { class: 'lab-hi-row' }, [
-      el('th', { scope: 'row', text: chemName('hazard-index') }),
+    body.append(el('tr', { class: `lab-hi-row${lab.focus === 'hazard-index' ? ' lab-active' : ''}` }, [
+      el('th', { scope: 'row' }, focusPick('hazard-index')),
       el('td', { class: 'num', text: hi.baseline.value ?? 'n/a' }),
       el('td', { class: `num lab-cell-${hi.cell.kind}`, text: hiCell }),
       el('td', { text: statusWord(hi.baseline.status) }),
@@ -1071,7 +1079,7 @@ export function mountLab(root, hooks = {}) {
 
   function ratioChart(t, summary) {
     const ids = CHEMICALS.map(({ id }) => id);
-    const W = 560; const ROWH = 24; const ML = 118; const MR = 56; const MT = 16;
+    const W = 560; const ROWH = 28; const ML = 118; const MR = 56; const MT = 16;
     const H = MT + ids.length * ROWH + 12;
     const MAXR = 3;
     const x = r => ML + (Math.min(r, MAXR) / MAXR) * (W - ML - MR);
@@ -1095,24 +1103,26 @@ export function mountLab(root, hooks = {}) {
       g.addEventListener('keydown', event => {
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose({ focus: id }); }
       });
-      const label = svgEl('text', { x: ML - 8, y: y + 15, 'text-anchor': 'end', class: 'seg-label' });
+      // A full-row hit area, so the whole row answers a pointer, not only the bar.
+      g.append(svgEl('rect', { x: 0, y, width: W, height: ROWH, class: 'bar-hit' }));
+      const label = svgEl('text', { x: ML - 8, y: y + 17, 'text-anchor': 'end', class: 'seg-label' });
       label.textContent = chemName(id);
       g.append(label);
       if (entry.value === null) {
         g.append(svgEl('rect', {
-          x: ML, y: y + 4, width: x(0.5) - ML, height: ROWH - 10, class: 'bar-missing',
+          x: ML, y: y + 6, width: x(0.5) - ML, height: ROWH - 12, class: 'bar-missing',
         }));
-        const nrt = svgEl('text', { x: x(0.5) + 6, y: y + 15, class: 'seg-label' });
+        const nrt = svgEl('text', { x: x(0.5) + 6, y: y + 17, class: 'seg-label' });
         nrt.textContent = 'n/r';
         g.append(nrt);
       } else {
         const r = Number(entry.value) / Number(entry.reference);
         const width = Math.max(1, x(Math.min(r, MAXR)) - ML);
         g.append(svgEl('rect', {
-          x: ML, y: y + 4, width, height: ROWH - 10,
+          x: ML, y: y + 6, width, height: ROWH - 12,
           class: `bar-rect lab-bar-${entry.status}`,
         }));
-        const vt = svgEl('text', { x: ML + width + 6, y: y + 15, class: 'seg-label' });
+        const vt = svgEl('text', { x: ML + width + 6, y: y + 17, class: 'seg-label' });
         vt.textContent = r > MAXR ? `>${MAXR}x` : `${fmtRatio(r)}x`;
         g.append(vt);
       }

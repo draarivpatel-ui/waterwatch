@@ -5,6 +5,9 @@ import { PRESETS } from './presets.js';
 import { auditCsv, buildBundle } from './exports.js';
 import { parseCsv, decodeUpload } from './import.js';
 import { shortcutAction } from './shortcuts.js';
+import {
+  WHO_GUIDELINES, whoStatus, diagnose, benchmarkRatio, summarizeScenario,
+} from './diagnostic.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const $ = id => document.getElementById(id);
@@ -42,6 +45,8 @@ const SOURCES = [
     'https://www.cdc.gov/breastfeeding/php/guidelines-recommendations/feeding-your-child-safely-during-a-disaster.html'],
   ['EPA, identifying filters certified to reduce PFAS',
     'https://www.epa.gov/water-research/identifying-drinking-water-filters-certified-reduce-pfas'],
+  ['WHO, Guidelines for drinking-water quality (4th edition with first and second addenda, 2022)',
+    'https://www.who.int/publications/i/item/9789240045064'],
 ];
 
 const ACTIONS = {
@@ -188,7 +193,13 @@ function renderPresets() {
   const strip = $('preset-strip');
   strip.replaceChildren();
   for (const preset of PRESETS) {
-    const button = el('button', { type: 'button', 'aria-pressed': 'false', text: preset.title });
+    const samples = parseCsv(preset.csv);
+    const summary = summarizeScenario({ samples, screens: samples.map(sample => screenSample(sample)) });
+    const button = el('button', { type: 'button', 'aria-pressed': 'false', class: `scenario tone-${summary.tone}` }, [
+      mark(summary.icon),
+      el('span', { class: 'scenario-title', text: preset.title }),
+      el('span', { class: 'scenario-status', text: summary.text }),
+    ]);
     button.addEventListener('click', () => {
       $('csv-input').value = preset.csv;
       applyText(preset.csv, `${preset.title} preset. ${preset.description} Synthetic data, not measurements from a real system.`, true);
@@ -346,6 +357,38 @@ const REFERENCE_TEXT = {
   pfbs: 'No individual benchmark',
 };
 
+const SVG_GAUGE_MAX = 3;
+
+function svgNode(tag, attrs = {}) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+  return node;
+}
+
+// A benchmark gauge: the bar runs from 0 to 3x the benchmark, the tick marks 1x.
+function gauge(ratio, cls) {
+  const svg = svgNode('svg', {
+    class: `gauge ${cls}`, viewBox: '0 0 120 10', preserveAspectRatio: 'none', 'aria-hidden': 'true', focusable: 'false',
+  });
+  const width = (Math.min(Math.max(ratio, 0), SVG_GAUGE_MAX) / SVG_GAUGE_MAX) * 120;
+  svg.append(
+    svgNode('rect', { x: 0, y: 2, width: 120, height: 6, class: 'gauge-track' }),
+    svgNode('rect', { x: 0, y: 2, width: Math.max(width, ratio > 0 ? 1.2 : 0).toFixed(2), height: 6, class: 'gauge-fill' }),
+    svgNode('line', { x1: 40, y1: 0, x2: 40, y2: 10, class: 'gauge-tick' }),
+  );
+  return svg;
+}
+
+function ratioText(ratio) {
+  return `${String(Number(ratio.toPrecision(3)))}\u00d7`;
+}
+
+const WHO_WORD = { above: 'above', at: 'at', below: 'below' };
+
+function epaReference(id) {
+  return id === 'pfbs' ? 'No individual EPA benchmark' : `EPA ${REFERENCE_TEXT[id]}`;
+}
+
 function renderTable(sample, screen) {
   $('results-caption').textContent =
     `Single-sample screen for ${sample.tap}. Advisory: ${sample.advisory}. E. coli: ${sample.ecoli}.`;
@@ -365,24 +408,107 @@ function renderTable(sample, screen) {
         document.createTextNode(word),
         result.rounded ? el('span', {
           class: 'context',
-          text: `Rule rounding shows ${result.rounded} ${result.unit} (${result.roundedStatus}); this screen still uses the unrounded reading.`,
+          text: `Rule rounding ${result.rounded} ${result.unit} (${result.roundedStatus})`,
         }) : null,
         result.status === 'no-limit' ? el('span', {
           class: 'context',
-          text: 'Screened through the Hazard Index below.',
+          text: 'Counted in the Hazard Index',
         }) : null,
       ]),
     ]);
-    body.append(el('tr', {}, [
-      el('th', { scope: 'row' }, [
-        el('span', { class: 'chem-name', text: result.label }),
-        el('span', { class: 'chem-unit', text: result.unit }),
-      ]),
+    const who = WHO_GUIDELINES[result.id];
+    const whoState = who ? whoStatus(result.id, result.value) : null;
+    const reference = el('td', { 'data-label': 'Benchmark' }, [
+      el('span', { class: 'ref-epa', text: epaReference(result.id) }),
+      who ? el('span', { class: 'ref-who' }, [
+        document.createTextNode(who.text),
+        WHO_WORD[whoState] ? el('span', { class: `who-status status-${whoState}`, text: ` ${WHO_WORD[whoState]}` }) : null,
+      ]) : null,
+    ]);
+    const ratio = benchmarkRatio(result);
+    const ratioCell = el('td', { class: 'num ratio', 'data-label': 'Ratio' }, ratio === null
+      ? el('span', { class: 'not-reported', text: result.status === 'no-limit' ? 'in index' : 'n/r' })
+      : [el('span', { class: 'ratio-n', text: ratioText(ratio) }), gauge(ratio, cls)]);
+    body.append(el('tr', { class: `row-${result.status}` }, [
+      el('th', { scope: 'row' }, el('span', { class: 'chem-name', text: result.label })),
       el('td', { class: 'num', 'data-label': 'Measured' }, measured),
-      el('td', { 'data-label': 'Reference', text: REFERENCE_TEXT[result.id] }),
-      el('td', { 'data-label': 'Finding' }, finding),
+      reference,
+      ratioCell,
+      el('td', { class: 'wide', 'data-label': 'Finding' }, finding),
     ]));
   }
+}
+
+const READOUT_TONE = {
+  above: ['mark-above', 'status-above', 'Above'],
+  at: ['mark-at', 'status-at', 'At'],
+  below: ['mark-below', 'status-below', 'Below'],
+  missing: ['mark-missing', 'status-missing', 'Not reported'],
+  scope: ['mark-scope', 'status-no-limit', 'Not applicable'],
+};
+
+function readoutCell(label, value, toneKey, detail, word) {
+  const [icon, cls, defaultWord] = READOUT_TONE[toneKey];
+  return el('div', { class: `readout-cell ${cls}` }, [
+    el('p', { class: 'readout-label', text: label }),
+    el('p', { class: 'readout-value' }, [
+      el('span', { class: 'readout-n', text: value }),
+      el('span', { class: 'readout-status' }, [mark(icon), document.createTextNode(word ?? defaultWord)]),
+    ]),
+    detail ? el('p', { class: 'readout-detail', text: detail }) : null,
+  ]);
+}
+
+const HI_TONE = { above: 'above', 'above-lower-bound': 'above', at: 'at', below: 'below', incomplete: 'missing', 'not-applicable': 'scope' };
+const ADVISORY_READOUT = { none: 'None', boil: 'Boil', 'do-not-drink': 'Do not drink', 'do-not-use': 'Do not use', unknown: 'Unknown' };
+
+function renderReadout(view) {
+  const box = $('readout');
+  box.replaceChildren();
+  box.hidden = !view;
+  if (!view) return;
+  const { sample, screen } = view;
+  const rated = screen.results
+    .map(result => ({ result, ratio: benchmarkRatio(result) }))
+    .filter(item => item.ratio !== null);
+  const top = rated.reduce((best, item) => (best === null || item.ratio > best.ratio ? item : best), null);
+  box.append(top
+    ? readoutCell('Highest benchmark ratio', ratioText(top.ratio), top.result.status,
+      `${top.result.label} ${top.result.value} \u00f7 ${top.result.limit} ${top.result.unit}`)
+    : readoutCell('Highest benchmark ratio', 'n/r', 'missing', 'No benchmarked field reported'));
+  const hi = screen.mixture;
+  box.append(readoutCell('PFAS Hazard Index', hi.raw ?? 'n/r', HI_TONE[hi.status],
+    'Benchmark 1, sum of four ratios',
+    hi.status === 'above-lower-bound' ? 'Above, partial' : hi.status === 'incomplete' ? 'Incomplete' : undefined));
+  const ecoli = { present: ['above', 'Detected'], absent: ['below', 'Absent'], unknown: ['missing', 'Not reported'] }[sample.ecoli];
+  box.append(readoutCell('E. coli', sample.ecoli === 'present' ? 'Present' : sample.ecoli === 'absent' ? 'Absent' : 'n/r',
+    ecoli[0], 'Health goal is zero', ecoli[1]));
+  const advisoryTone = sample.advisory === 'none' ? 'below' : sample.advisory === 'unknown' ? 'missing' : 'above';
+  box.append(readoutCell('Reported advisory', ADVISORY_READOUT[sample.advisory] ?? sample.advisory, advisoryTone,
+    null, advisoryTone === 'below' ? 'None active' : advisoryTone === 'missing' ? 'Not reported' : 'Active'));
+}
+
+const DIAG_ICON = { urgent: 'mark-above', caution: 'mark-at', info: 'mark-missing', clear: 'mark-below' };
+
+function renderDiagnostic(view) {
+  const box = $('diagnostic');
+  box.replaceChildren();
+  if (!view) return;
+  const findings = diagnose({ samples: state.samples, screens: state.screens, active: state.active });
+  box.append(el('h3', { text: 'Likely sources and field steps' }));
+  const list = el('ol', { class: 'diag-list' });
+  for (const finding of findings) {
+    list.append(el('li', { class: `diag diag-${finding.tone}`, 'data-diag': finding.id }, [
+      mark(DIAG_ICON[finding.tone]),
+      el('div', { class: 'diag-body' }, [
+        el('p', { class: 'diag-title', text: finding.title }),
+        el('p', { class: 'diag-evidence', text: finding.evidence }),
+        el('p', { class: 'diag-action', text: finding.action }),
+        finding.cite ? el('p', { class: 'diag-cite', text: `Common sources (${finding.cite.cite}): ${finding.cite.text}` }) : null,
+      ]),
+    ]));
+  }
+  box.append(list);
 }
 
 function renderNotes(sample, screen) {
@@ -395,6 +521,7 @@ function renderNotes(sample, screen) {
   if (screen.unknowns.length) {
     parts.push(`Unreported for this tap: ${screen.unknowns.map(id => UNKNOWN_NAMES[id] ?? id).join(', ')}.`);
   }
+  parts.push('Findings compare the unrounded reading with the EPA benchmark. WHO guideline values are shown for comparison; WHO sets no final guideline value for these PFAS.');
   parts.push('E. coli\'s federal health goal is zero (absence); official compliance depends on routine and repeat tests, not this reading alone.');
   parts.push('One tap, one sample: this is a screening context, never a compliance determination or a potability clearance.');
   notes.append(...parts.map(text => el('p', { class: 'notes', text })));
@@ -418,12 +545,16 @@ function renderReport() {
     $('results-caption').textContent = state.stale ? 'Report withheld: the applied data changed.' : 'No sample loaded.';
     $('results-body').replaceChildren();
     $('report-notes').replaceChildren();
+    renderReadout(null);
+    renderDiagnostic(null);
     renderPrintSheet(null);
     return;
   }
   const { sample, screen } = view;
   renderAction(screen);
+  renderReadout(view);
   renderTable(sample, screen);
+  renderDiagnostic(view);
   renderNotes(sample, screen);
   renderPrintSheet(view);
 }
@@ -469,7 +600,7 @@ function renderMixture() {
       document.createTextNode(term.quotient === null ? ' not reported' : ` = ${term.quotient}`),
     ]));
   });
-  body.append(el('h3', { text: 'PFAS mixture Hazard Index' }), terms);
+  body.append(terms);
 
   const status = el('p', { class: 'hi-total' });
   const markFor = s => mark(s === 'above' || s === 'above-lower-bound' ? 'mark-above' : s === 'at' ? 'mark-at' : 'mark-below');
@@ -880,6 +1011,19 @@ const ADVISORY_BI = {
 const ECOLI_BI = { present: 'present / presente', absent: 'absent / ausente', unknown: 'unknown / desconocido' };
 const UNKNOWN_BI = { advisory: 'advisory / aviso', ecoli: 'E. coli / E. coli' };
 
+const STATUS_BI = {
+  above: 'above / por encima', at: 'at / en el nivel', below: 'below / por debajo',
+  missing: 'not reported / no reportado', 'no-limit': 'in index / en el índice',
+};
+
+function fieldLine(label) {
+  return el('div', { class: 'ps-field' }, [el('span', { text: label }), el('span', { class: 'ps-blank' })]);
+}
+
+function checkLine(label) {
+  return el('li', {}, [el('span', { class: 'ps-box', 'aria-hidden': 'true' }), document.createTextNode(label)]);
+}
+
 function renderPrintSheet(view) {
   const sheet = $('print-sheet');
   sheet.replaceChildren();
@@ -892,44 +1036,26 @@ function renderPrintSheet(view) {
   }
   const { sample, screen } = view;
   const spec = actionText(screen.action);
-  const flagged = screen.results.filter(r => r.status === 'above' || r.status === 'at');
+  const findings = diagnose({ samples: state.samples, screens: state.screens, active: state.active });
 
   sheet.append(
-    el('h1', { text: 'WaterWatch' }),
+    el('header', { class: 'ps-head' }, [
+      el('h1', { text: 'Community Water Field Audit Sheet' }),
+      el('p', { class: 'ps-brand', text: 'WaterWatch / Hoja de auditoría del agua' }),
+    ]),
     el('p', { class: 'ps-tap', text: `Tap / Grifo: ${sample.tap}` }),
     el('p', {
       text: `Advisory / Aviso: ${ADVISORY_BI[sample.advisory] ?? sample.advisory}   |   E. coli: ${ECOLI_BI[sample.ecoli] ?? sample.ecoli}   |   Screened / Evaluado: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
     }),
     el('p', {
-      text: state.synthetic
+      class: 'ps-origin',
+      text: `${state.synthetic
         ? 'Synthetic example / Ejemplo sintético'
-        : 'CSV values entered by user / Datos ingresados por el usuario',
+        : 'CSV values entered by user / Datos ingresados por el usuario'}${screen.unknowns.length
+        ? `   |   Unreported / No reportado: ${screen.unknowns.map(id => UNKNOWN_BI[id] ?? UNKNOWN_NAMES[id] ?? id).join(', ')}`
+        : ''}`,
     }),
   );
-  const table = el('table');
-  const tbody = el('tbody');
-  table.append(el('thead', {}, el('tr', {}, [
-    el('th', { scope: 'col', text: 'Contaminant / Contaminante' }),
-    el('th', { scope: 'col', class: 'num', text: 'Measured / Medido' }),
-    el('th', { scope: 'col', text: 'Reference / Referencia' }),
-    el('th', { scope: 'col', text: 'Status / Estado' }),
-  ])), tbody);
-  for (const r of flagged) {
-    tbody.append(el('tr', {}, [
-      el('td', { text: r.label }),
-      el('td', { class: 'num', text: `${r.value} ${r.unit}` }),
-      el('td', { text: REFERENCE_TEXT[r.id] }),
-      el('td', { text: r.status === 'above' ? 'above / por encima' : 'at / en el nivel' }),
-    ]));
-  }
-  if (['above', 'above-lower-bound'].includes(screen.mixture.status)) {
-    tbody.append(el('tr', {}, [
-      el('td', { text: 'PFAS mixture Hazard Index' }),
-      el('td', { class: 'num', text: screen.mixture.raw }),
-      el('td', { text: '1' }),
-      el('td', { text: 'above / por encima' }),
-    ]));
-  }
   sheet.append(el('div', { class: 'ps-cols' }, [
     el('div', { class: 'ps-lang', lang: 'en' }, [
       el('h2', { text: 'What to do' }),
@@ -942,27 +1068,76 @@ function renderPrintSheet(view) {
       el('p', { text: spec.es.body }),
     ]),
   ]));
-  sheet.append(el('h2', { text: 'Findings / Resultados' }));
-  if (flagged.length || ['above', 'above-lower-bound'].includes(screen.mixture.status)) {
-    sheet.append(table);
-  } else {
-    sheet.append(el('p', {
-      text: 'No reported measurement is above its reference level for this sample. Ninguna medición reportada supera su nivel de referencia para esta muestra.',
-    }));
+
+  const table = el('table', { class: 'ps-table' });
+  const tbody = el('tbody');
+  table.append(el('thead', {}, el('tr', {}, [
+    el('th', { scope: 'col', text: 'Contaminant / Contaminante' }),
+    el('th', { scope: 'col', class: 'num', text: 'Measured / Medido' }),
+    el('th', { scope: 'col', text: 'EPA benchmark / Referencia EPA' }),
+    el('th', { scope: 'col', class: 'num', text: 'Ratio' }),
+    el('th', { scope: 'col', text: 'Status / Estado' }),
+    el('th', { scope: 'col', text: 'WHO / OMS' }),
+  ])), tbody);
+  for (const r of screen.results) {
+    const ratio = benchmarkRatio(r);
+    const who = WHO_GUIDELINES[r.id];
+    const whoState = who ? whoStatus(r.id, r.value) : null;
+    tbody.append(el('tr', { class: ['above', 'at'].includes(r.status) ? 'ps-flag' : '' }, [
+      el('td', { text: r.label }),
+      el('td', { class: 'num', text: r.value === null ? 'n/r' : `${r.value} ${r.unit}` }),
+      el('td', { text: r.id === 'pfbs' ? 'none (index only)' : REFERENCE_TEXT[r.id] }),
+      el('td', { class: 'num', text: ratio === null ? '' : ratioText(ratio) }),
+      el('td', { text: STATUS_BI[r.status] ?? r.status }),
+      el('td', { text: who ? `${who.value}${r.id === 'nitrate' ? ' mg/L as NO3' : ' ppb'}${WHO_WORD[whoState] ? `, ${WHO_WORD[whoState]}` : ''}` : 'no value / sin valor' }),
+    ]));
   }
-  if (screen.unknowns.length) {
-    sheet.append(el('p', {
-      text: `Unreported / No reportado: ${screen.unknowns.map(id => UNKNOWN_BI[id] ?? UNKNOWN_NAMES[id] ?? id).join(', ')}.`,
-    }));
-  }
+  const hi = screen.mixture;
+  const names = { pfhxs: 'PFHxS', pfna: 'PFNA', genx: 'GenX', pfbs: 'PFBS' };
+  sheet.append(el('h2', { text: 'Readings / Lecturas' }), table, el('p', {
+    class: 'ps-math',
+    text: `PFAS Hazard Index = ${hi.terms.map(term => `${names[term.id]}/${term.denominator}`).join(' + ')} = ${hi.terms.map(term => term.quotient ?? 'n/r').join(' + ')} = ${hi.raw ?? 'n/r'} (${hi.status.replace(/-/g, ' ')}; benchmark 1)`,
+  }));
+
+  sheet.append(el('div', { class: 'ps-split' }, [
+    el('div', {}, [
+      el('h2', { text: 'Likely sources / Fuentes probables' }),
+      // The sheet stays one page: the three most urgent patterns print, the rest stay in the app.
+      el('ol', { class: 'ps-diag' }, findings.slice(0, 3).map(finding => el('li', {}, [
+        el('strong', { text: `${finding.title} / ${finding.titleEs}. ` }),
+        document.createTextNode(`${finding.evidence} ${finding.action}`),
+      ]))),
+      findings.length > 3 ? el('p', {
+        text: `${findings.length - 3} more pattern${findings.length - 3 === 1 ? '' : 's'} in the app / ${findings.length - 3} más en la aplicación.`,
+      }) : null,
+    ]),
+    el('div', {}, [
+      el('h2', { text: 'Field record / Registro de campo' }),
+      fieldLine('Collected by / Recogido por'),
+      fieldLine('Date and time / Fecha y hora'),
+      fieldLine('Hours water sat unused / Horas sin uso'),
+      fieldLine('Lab and sample ID / Laboratorio e ID'),
+      el('ul', { class: 'ps-checks ps-inline' }, [
+        checkLine('First draw / Primera agua'),
+        checkLine('Flushed / Después de correr'),
+      ]),
+      el('h2', { text: 'Follow-up / Seguimiento' }),
+      el('ul', { class: 'ps-checks' }, [
+        checkLine('Shared with the water system / Compartido con el sistema de agua'),
+        checkLine('Shared with the health department / Compartido con salud pública'),
+        checkLine('Notice posted for residents / Aviso publicado para residentes'),
+        checkLine('Resample date / Fecha de nuevo muestreo'),
+      ]),
+    ]),
+  ]));
   sheet.append(el('p', {
     class: 'ps-meta',
-    text: 'WaterWatch screens one tap sample against federal reference levels. It is not a compliance determination or a potability clearance. Sources: EPA PFAS rule (2024), EPA LCRI, 40 CFR 141.63, CDC drinking-water advisories. Generated offline; nothing was sent anywhere.',
+    text: 'WaterWatch screens one tap sample against EPA reference levels, with WHO guideline values for comparison. It is not a compliance determination or a potability clearance, and likely sources are screening hints, not proof. Sources: EPA PFAS rule (2024), EPA LCRI, EPA drinking water regulations table, 40 CFR 141.63, CDC drinking-water advisories, WHO drinking-water guidelines (2022). Generated offline; nothing was sent anywhere.',
   }));
   sheet.append(el('p', {
     class: 'ps-meta',
     lang: 'es',
-    text: 'WaterWatch evalúa una sola muestra de grifo contra niveles de referencia federales. No es una determinación de cumplimiento ni una autorización de potabilidad. Generado sin conexión; nada se envió a ninguna parte.',
+    text: 'WaterWatch evalúa una sola muestra de grifo contra niveles de referencia de la EPA, con valores guía de la OMS para comparar. No es una determinación de cumplimiento ni una autorización de potabilidad. Generado sin conexión; nada se envió a ninguna parte.',
   }));
 }
 
