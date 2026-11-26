@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, extname, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { createScratchDir } from './scratch-dir.mjs';
+import { createScratchDir, isCreatedScratchDir } from './scratch-dir.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -35,6 +35,15 @@ const check = (name, ok, detail = '') => {
 };
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function removeCreatedScratchDir(target) {
+  if (!isCreatedScratchDir(target)) return;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await rm(target, { recursive: true, force: true }).catch(() => {});
+    if (!existsSync(target)) return;
+    await sleep(100);
+  }
+}
 
 /* ---------- static server ---------- */
 
@@ -699,8 +708,8 @@ Crowded flushed,boil,present,12,20,crowded,flushed`;
     ]);
   }
   try { server.close(); } catch { /* not listening */ }
-  if (profile) await rm(profile, { recursive: true, force: true }).catch(() => {});
-  if (dlDir) await rm(dlDir, { recursive: true, force: true }).catch(() => {});
+  await removeCreatedScratchDir(profile);
+  await removeCreatedScratchDir(dlDir);
 }
 
 const failed = results.filter(r => !r.ok);

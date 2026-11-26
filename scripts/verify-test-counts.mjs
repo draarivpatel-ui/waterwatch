@@ -18,6 +18,7 @@ const LABELS = new Map([
   ['script-safety', 'script-safety.test.js'],
   ['shortcuts', 'shortcuts.test.js'],
 ]);
+const TAP_COUNT_LABELS = ['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo'];
 
 function tapCount(output, label, file) {
   const value = Number(output.match(new RegExp(`^# ${label} (\\d+)$`, 'm'))?.[1] ?? NaN);
@@ -40,13 +41,8 @@ function runSuite(file) {
     child.on('error', rejectRun);
     child.on('close', code => {
       try {
-        const pass = tapCount(stdout, 'pass', file);
-        const fail = tapCount(stdout, 'fail', file);
-        const tests = tapCount(stdout, 'tests', file);
-        if (pass + fail > tests) {
-          throw new Error(`${file}: TAP pass and fail counts exceed the test count`);
-        }
-        resolveRun({ file, code, pass, fail, tests, output: stdout + stderr });
+        const counts = Object.fromEntries(TAP_COUNT_LABELS.map(label => [label, tapCount(stdout, label, file)]));
+        resolveRun({ file, code, ...counts, output: stdout + stderr });
       } catch (error) {
         rejectRun(error);
       }
@@ -74,10 +70,16 @@ const actual = new Map();
 let failed = false;
 for (const file of testFiles) {
   const result = await runSuite(file);
-  actual.set(file, result.pass);
-  console.log(`${file}: ${result.pass} passing`);
-  if (result.code !== 0 || result.fail !== 0 || !Number.isFinite(result.pass)) {
-    console.error(`${file}: suite did not pass cleanly`);
+  actual.set(file, result.tests);
+  console.log(`${file}: ${result.tests} tests, ${result.pass} passing`);
+  const countProblems = [];
+  if (result.pass !== result.tests) countProblems.push(`pass ${result.pass} does not equal tests ${result.tests}`);
+  for (const label of ['fail', 'cancelled', 'skipped', 'todo']) {
+    if (result[label] !== 0) countProblems.push(`${label} ${result[label]} is not zero`);
+  }
+  if (result.code !== 0) countProblems.push(`exit code ${result.code}`);
+  if (countProblems.length > 0) {
+    console.error(`${file}: suite did not pass cleanly (${countProblems.join('; ')})`);
     failed = true;
   }
 }
