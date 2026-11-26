@@ -1,4 +1,4 @@
-import { lstatSync, mkdtempSync, realpathSync } from 'node:fs';
+import { lstatSync, mkdtempSync, readlinkSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -21,10 +21,81 @@ function isWithin(root, candidate) {
   return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
-function approvedTmpBases() {
-  const roots = new Set([realpathSync(os.tmpdir())]);
+const APPROVED_SYSTEM_SYMLINKS = new Map([
+  ['/tmp', '/private/tmp'],
+  ['/var', '/private/var'],
+]);
+
+function isApprovedSystemSymlink(componentPath, label) {
+  const expected = APPROVED_SYSTEM_SYMLINKS.get(componentPath);
+  if (!expected) return false;
+  let target;
   try {
-    roots.add(realpathSync(PRIVATE_TMP));
+    target = readlinkSync(componentPath);
+  } catch {
+    throw new Error(`${label} symlink is not readable: ${componentPath}`);
+  }
+  if (path.resolve(path.dirname(componentPath), target) !== expected) return false;
+  assertSafePathComponents(expected, label);
+  return true;
+}
+
+function assertSafePathComponents(target, label) {
+  const resolved = path.resolve(target);
+  const root = path.parse(resolved).root;
+  let current = root;
+  for (const component of resolved.slice(root.length).split(path.sep).filter(Boolean)) {
+    current = path.join(current, component);
+    let stat;
+    try {
+      stat = lstatSync(current);
+    } catch {
+      throw new Error(`${label} path component is not readable: ${current}`);
+    }
+    if (stat.isSymbolicLink()) {
+      const subject = current === resolved ? label : `${label} ancestor`;
+      if (!isApprovedSystemSymlink(current, label)) throw new Error(`refusing symlink ${subject}: ${current}`);
+      continue;
+    }
+    if (!stat.isDirectory()) {
+      const subject = current === resolved ? label : `${label} path component`;
+      throw new Error(`${subject} is not a directory: ${current}`);
+    }
+  }
+  return resolved;
+}
+
+function validateExistingDirectory(candidate, label) {
+  const unresolved = assertSafePathComponents(candidate, label);
+  let real;
+  try {
+    real = realpathSync(unresolved);
+  } catch {
+    throw new Error(`${label} does not exist or is not readable: ${unresolved}`);
+  }
+  assertSafePathComponents(real, label);
+  let stat;
+  try {
+    stat = lstatSync(real);
+  } catch {
+    throw new Error(`${label} real path is not readable: ${real}`);
+  }
+  if (stat.isSymbolicLink()) throw new Error(`refusing symlink ${label}: ${real}`);
+  if (!stat.isDirectory()) throw new Error(`${label} is not a directory: ${real}`);
+  let stable;
+  try {
+    stable = realpathSync(real);
+  } catch {
+    throw new Error(`${label} real path is unstable: ${real}`);
+  }
+  if (stable !== real) throw new Error(`unstable ${label} path: ${real}`);
+  return { unresolved, real };
+}
+
+function approvedTmpBases() {
+  const roots = new Set([validateExistingDirectory(os.tmpdir(), 'TMPDIR').real]);
+  try {
+    roots.add(validateExistingDirectory(PRIVATE_TMP, 'scratch root').real);
   } catch {
     // Not every host has macOS-style /private/tmp.
   }
@@ -35,76 +106,21 @@ function approvedBaseFor(candidate) {
   return approvedTmpBases().find(root => isWithin(root, candidate));
 }
 
-function assertNoSymlinkedComponents(root, target, label) {
-  const chain = [root];
-  const relative = path.relative(root, target);
-  if (relative !== '') {
-    let current = root;
-    for (const component of relative.split(path.sep)) {
-      current = path.join(current, component);
-      chain.push(current);
-    }
-  }
-  for (const componentPath of chain) {
-    let stat;
-    try {
-      stat = lstatSync(componentPath);
-    } catch {
-      throw new Error(`${label} path component is not readable: ${componentPath}`);
-    }
-    if (stat.isSymbolicLink()) throw new Error(`refusing symlink ${label} ancestor: ${componentPath}`);
-    if (!stat.isDirectory()) throw new Error(`${label} path component is not a directory: ${componentPath}`);
-  }
-}
-
-function validateRootCandidate(candidate) {
-  const resolved = path.resolve(candidate);
-  let stat;
-  try {
-    stat = lstatSync(resolved);
-  } catch {
-    throw new Error(`scratch root does not exist or is not readable: ${resolved}`);
-  }
-  if (stat.isSymbolicLink()) throw new Error(`refusing symlink scratch root: ${resolved}`);
-  if (!stat.isDirectory()) throw new Error(`scratch root is not a directory: ${resolved}`);
-  const real = realpathSync(resolved);
+function validateRootCandidate(candidate, label = 'scratch root') {
+  const { unresolved, real } = validateExistingDirectory(candidate, label);
   const approvedBase = approvedBaseFor(real);
   if (!approvedBase) {
-    throw new Error(`refusing scratch root outside temporary scratch space: ${resolved}`);
+    throw new Error(`refusing scratch root outside temporary scratch space: ${unresolved}`);
   }
-  if (resolved !== real || resolved !== realpathSync(resolved)) {
-    throw new Error(`refusing non-canonical scratch root: ${resolved}`);
-  }
-  assertNoSymlinkedComponents(approvedBase, resolved, 'scratch root');
-  if (resolved !== realpathSync(resolved)) throw new Error(`unstable scratch root path: ${resolved}`);
-  return resolved;
+  return real;
 }
 
 function validateScratchParent(parent, roots, requested) {
-  const resolved = path.resolve(parent);
-  let stat;
-  let real;
-  try {
-    stat = lstatSync(resolved);
-    real = realpathSync(resolved);
-  } catch {
-    throw new Error(`scratch parent does not exist or is not readable: ${parent}`);
-  }
+  const { real } = validateExistingDirectory(parent, 'scratch parent');
   if (!roots.some(root => isWithin(root, real))) {
     throw new Error(`refusing scratch directory outside temporary scratch space: ${requested}`);
   }
-  if (stat.isSymbolicLink()) throw new Error(`refusing symlink scratch parent: ${parent}`);
-  if (!stat.isDirectory()) throw new Error(`scratch parent is not a directory: ${parent}`);
-  if (resolved !== real || resolved !== realpathSync(resolved)) {
-    throw new Error(`refusing non-canonical scratch parent: ${resolved}`);
-  }
-  const approvedBase = approvedBaseFor(resolved);
-  if (!approvedBase) {
-    throw new Error(`refusing scratch directory outside temporary scratch space: ${requested}`);
-  }
-  assertNoSymlinkedComponents(approvedBase, resolved, 'scratch parent');
-  if (resolved !== realpathSync(resolved)) throw new Error(`unstable scratch parent path: ${resolved}`);
-  return resolved;
+  return real;
 }
 
 function scratchRoots(allowedRoots) {
@@ -115,7 +131,7 @@ function scratchRoots(allowedRoots) {
     return [...new Set(allowedRoots.map(root => validateRootCandidate(root)))];
   }
 
-  const roots = new Set([validateRootCandidate(realpathSync(os.tmpdir()))]);
+  const roots = new Set([validateRootCandidate(os.tmpdir(), 'TMPDIR')]);
   try {
     roots.add(validateRootCandidate(AGENT_WORK));
   } catch {

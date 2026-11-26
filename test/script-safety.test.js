@@ -83,7 +83,7 @@ test('a symlink ancestor escaping the allowed scratch roots is refused', () => {
     const target = path.join(link, 'new-profile');
     assert.throws(
       () => createScratchDir('waterwatch-smoke-profile-', target, fixture.options),
-      /outside temporary scratch space/);
+      /refusing symlink scratch parent/);
     assert.equal(existsSync(path.join(outside, 'new-profile')), false);
     assert.equal(readFileSync(path.join(outside, 'sentinel.txt'), 'utf8'), 'keep');
   } finally {
@@ -102,7 +102,7 @@ test('a symlinked override parent inside the allowed root is refused', () => {
     symlinkSync(realParent, link, 'dir');
     assert.throws(
       () => createScratchDir('waterwatch-smoke-profile-', path.join(link, 'inner', 'new-profile'), fixture.options),
-      /non-canonical scratch parent/);
+      /refusing symlink scratch parent ancestor/);
     assert.equal(readdirSync(inner).length, 0);
   } finally {
     removeFixture(fixture.container);
@@ -148,6 +148,29 @@ test('default scratch paths are unique inside an explicitly allowed root', () =>
   }
 });
 
+test('a symlink above TMPDIR is refused before scratch creation', () => {
+  const realBase = mkdtempSync(path.join(REAL_TMP, 'waterwatch-tmpdir-base-'));
+  const originalTmpdir = process.env.TMPDIR;
+  try {
+    const outside = path.join(realBase, 'outside');
+    const sub = path.join(outside, 'sub');
+    mkdirSync(outside);
+    mkdirSync(sub);
+    const link = path.join(realBase, 'link');
+    symlinkSync(outside, link, 'dir');
+    process.env.TMPDIR = path.join(link, 'sub');
+    assert.throws(
+      () => createScratchDir('waterwatch-smoke-'),
+      /refusing symlink TMPDIR ancestor/);
+    assert.deepEqual(readdirSync(sub), []);
+    assert.deepEqual(readdirSync(outside), ['sub']);
+  } finally {
+    if (originalTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = originalTmpdir;
+    removeFixture(realBase);
+  }
+});
+
 test('a symlinked scratch root ancestor is rejected', () => {
   const fixture = scratchFixture();
   try {
@@ -159,7 +182,7 @@ test('a symlinked scratch root ancestor is rejected', () => {
     symlinkSync(realParent, link, 'dir');
     assert.throws(
       () => createScratchDir('waterwatch-smoke-', undefined, { allowedRoots: [path.join(link, 'root')] }),
-      /non-canonical scratch root/);
+      /refusing symlink scratch root ancestor/);
   } finally {
     removeFixture(fixture.container);
   }
