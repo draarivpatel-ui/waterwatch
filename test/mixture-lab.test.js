@@ -445,6 +445,15 @@ test('no shipped lab string uses a forbidden dash', () => {
   }
 });
 
+test('Spanish chart shorthand replaces the English HI and n/r labels', () => {
+  assert.equal(STRINGS.en.hiLine, 'HI = 1');
+  assert.equal(STRINGS.es.hiLine, 'IP = 1');
+  assert.equal(STRINGS.en.notReportedShort, 'n/r');
+  assert.equal(STRINGS.es.notReportedShort, 'n/d');
+  assert.doesNotMatch(STRINGS.es.hiLine, /HI/);
+  assert.notEqual(STRINGS.es.notReportedShort, STRINGS.en.notReportedShort);
+});
+
 test('lab headings are sentence case, never all-caps kickers', () => {
   for (const lang of ['en', 'es']) {
     for (const key of ['title', 'comparatorTitle', 'scenarioTitle', 'exportsTitle',

@@ -170,9 +170,11 @@ export function screenSample(input) {
   if (ecoli === 'unknown') unknowns.push('ecoli');
   const microbial = advisory === 'boil' || ecoli === 'present';
   const hasChemicals = chemicals.length > 0;
-  const nitrateAtOrAbove = ['at', 'above'].includes(results.find(result => result.id === 'nitrate')?.status);
+  const heatConcentrating = results.some(result =>
+    result.limit !== null && ['at', 'above'].includes(result.status))
+    || ['at', 'above', 'above-lower-bound'].includes(mixture.status);
   const action = advisory === 'do-not-use' || advisory === 'do-not-drink' ? advisory :
-    microbial && (hasChemicals || nitrateAtOrAbove) ? 'co-occurrence' :
+    microbial && heatConcentrating ? 'co-occurrence' :
     advisory === 'boil' ? 'boil' :
     microbial ? 'microbial' :
     hasChemicals ? 'chemical' :

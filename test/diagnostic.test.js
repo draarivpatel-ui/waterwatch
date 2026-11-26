@@ -130,6 +130,24 @@ test('storm south block has no fecal finding when E. coli is unknown', () => {
   assert.match(findings[1].evidence, /11\.2 mg\/L as N, 1\.12x/);
 });
 
+test('boil notice plus E. coli at exactly 10 mg/L nitrate qualifies the advisory card in both languages', () => {
+  const { samples, screens } = load(`${HEAD}\nT,boil,present,0,0,10.0,0,0,0,0,0,0,0`);
+  assert.equal(screens[0].results.find(result => result.id === 'nitrate').status, 'at');
+  assert.deepEqual(screens[0].chemicals, []);
+  assert.equal(screens[0].action, 'co-occurrence');
+  const findings = diagnose({ samples, screens, active: 0 });
+  assert.deepEqual(ids(findings), ['advisory', 'fecal', 'nitrate']);
+  const advisory = findings[0];
+  assert.doesNotMatch(advisory.action, /before anything below/);
+  assert.match(advisory.action, /Nitrate is at or above 10 mg\/L as N/);
+  assert.match(advisory.action, /boiling does not make this tap water safe for infant formula/i);
+  assert.match(advisory.action, /commercially bottled water or another approved source/);
+  assert.doesNotMatch(advisory.actionEs, /antes que cualquier paso posterior/);
+  assert.match(advisory.actionEs, /nitrato está en 10 mg\/L como N o por encima/);
+  assert.match(advisory.actionEs, /hervir no hace que esta agua del grifo sea segura para preparar fórmula infantil/i);
+  assert.match(advisory.actionEs, /agua embotellada comercial u otra fuente aprobada/);
+});
+
 test('municipal baseline shows no pattern for either tap', () => {
   const { samples, screens } = preset('baseline');
   for (const active of [0, 1]) assert.deepEqual(ids(diagnose({ samples, screens, active })), ['clear']);
@@ -185,6 +203,31 @@ test('lead pairing picks the lowest paired draw', () => {
   const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,30,pair1,first-draw\nB,20,pair1,flushed\nC,3,pair1,flushed`);
   const findings = diagnose({ samples, screens, active: 0 });
   assert.match(findings[0].evidence, /3 ppb in its paired flushed row at C, 90% lower/);
+});
+
+test('a 2 to 24 ppb pair reports the flushed rise and never claims near-tap plumbing', () => {
+  const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,2,pair1,first-draw\nB,24,pair1,flushed`);
+  const findings = diagnose({ samples, screens, active: 1 });
+  const lead = findings.find(finding => finding.id.startsWith('lead-'));
+  assert.equal(lead.id, 'lead-rises');
+  assert.match(lead.title, /rises in the flushed draw/i);
+  assert.match(lead.evidence, /flushed draw rose above the first draw/i);
+  assert.match(lead.evidence, /away from fixture-only stagnation/i);
+  assert.match(lead.evidence, /upstream supply or the service line/i);
+  assert.doesNotMatch(`${lead.title} ${lead.evidence}`, /near this tap|stays high|fixture-only stagnation fits/i);
+  assert.match(lead.evidenceEs, /extracción de purga aumentó por encima de la primera extracción/);
+  assert.match(lead.evidenceEs, /suministro aguas arriba o la línea de servicio/);
+});
+
+test('a 10 to 6 ppb pair reports that the flushed sample dropped below the benchmark', () => {
+  const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,10,pair1,first-draw\nB,6,pair1,flushed`);
+  const findings = diagnose({ samples, screens, active: 0 });
+  const lead = findings.find(finding => finding.id.startsWith('lead-'));
+  assert.equal(lead.id, 'lead-drops-below');
+  assert.match(lead.evidence, /first draw, at or above the 10 ppb benchmark/);
+  assert.match(lead.evidence, /flushed sample dropped below the benchmark/);
+  assert.doesNotMatch(`${lead.title} ${lead.evidence}`, /stays high|shared plumbing|near this tap/i);
+  assert.match(lead.evidenceEs, /muestra de purga bajó por debajo del nivel de referencia/);
 });
 
 /* ---------- other contaminants ---------- */
@@ -265,6 +308,22 @@ test('nonzero inputs below quantitation levels do not count as an EPA mixture', 
   const { screens } = load(`tap,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nT,0,2,2,5000`);
   assert.equal(screens[0].mixture.quantified, 1);
   assert.equal(screens[0].mixture.epaMixture, false);
+});
+
+test('zero quantified PFAS constituents never invent a quantified driver for the 1.197 screening sum', () => {
+  const { samples, screens } = load(`tap,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nT,2.99,3.99,4.99,0`);
+  assert.equal(screens[0].mixture.raw, '1.197');
+  assert.equal(screens[0].mixture.quantified, 0);
+  assert.equal(screens[0].mixture.epaMixture, false);
+  const findings = diagnose({ samples, screens, active: 0 });
+  assert.deepEqual(ids(findings), ['pfas-mixture']);
+  const mixture = findings[0];
+  assert.match(mixture.title, /Below-quantitation PFAS sum/);
+  assert.match(mixture.evidence, /None of the reported mixture constituents reached their EPA practical quantitation levels/);
+  assert.match(mixture.evidence, /below-quantitation screening signal only/);
+  assert.doesNotMatch(`${mixture.title} ${mixture.evidence}`, /only mixture constituent|PFHxS is the only|single-compound screening signal/i);
+  assert.match(mixture.evidenceEs, /Ninguno de los constituyentes reportados de la mezcla alcanzó sus niveles prácticos de cuantificación de la EPA/);
+  assert.match(mixture.evidenceEs, /solo una señal de evaluación por debajo del nivel de cuantificación/);
 });
 
 test('two quantified mixture constituents make the EPA multi-constituent mixture explicit', () => {

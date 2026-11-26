@@ -109,6 +109,19 @@ test('audit includes a lossless row for every screened item, including exact and
   assert.match(csv, /not a compliance or potability determination/i);
 });
 
+test('audit CSV labels below-quantitation, single-compound, and true mixture sums accurately', () => {
+  const below = auditCsv([{ tap: 'Below PQL', advisory: 'none', ecoli: 'absent',
+    values: { pfhxs: '2.99', pfna: '3.99', genx: '4.99', pfbs: '0' } }]);
+  assert.match(below, /"PFAS below-quantitation screening sum","1\.197","unitless","1"/);
+  assert.doesNotMatch(below, /"PFAS mixture Hazard Index","1\.197"/);
+  const single = auditCsv([{ tap: 'PFBS only', advisory: 'none', ecoli: 'absent',
+    values: { pfhxs: '0', pfna: '0', genx: '0', pfbs: '5000' } }]);
+  assert.match(single, /"PFAS single-compound screening signal","2\.5","unitless","1"/);
+  assert.doesNotMatch(single, /"PFAS mixture Hazard Index","2\.5"/);
+  const mixture = auditCsv([sample()]);
+  assert.match(mixture, /"PFAS mixture Hazard Index","1\.1","unitless","1"/);
+});
+
 test('fingerprint is SHA-256 of canonical payload UTF-8 bytes and preserves exact data', async () => {
   const result = await buildBundle([sample('Toma \u00C1')]);
   assert.equal(result.payload.samples[0].sample.values.pfoa, '4.001');

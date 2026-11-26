@@ -82,6 +82,13 @@ function auditSource(source) {
   return source;
 }
 
+function mixtureAuditLabel(hi) {
+  if (hi.epaMixture) return 'PFAS mixture Hazard Index';
+  if (hi.quantified === 1) return 'PFAS single-compound screening signal';
+  if (hi.raw !== null) return 'PFAS below-quantitation screening sum';
+  return 'PFAS incomplete screening sum';
+}
+
 export function auditCsv(samples, { source = 'unverified-input' } = {}) {
   const origin = auditSource(source);
   const rows = [[
@@ -98,7 +105,7 @@ export function auditCsv(samples, { source = 'unverified-input' } = {}) {
     rows.push([...identity, 'Lead (legacy)', sample.values.lead, 'ppb', '15', 'legacy action level',
       screen.legacyLead, null, null, scope, origin]);
     const hi = screen.mixture;
-    rows.push([...identity, 'PFAS mixture Hazard Index', hi.raw, 'unitless', '1', '2024 rule screening context',
+    rows.push([...identity, mixtureAuditLabel(hi), hi.raw, 'unitless', '1', '2024 rule screening context',
       hi.status, hi.rounded, hi.roundedStatus,
       hi.missing.length ? `${scope} Unreported constituents: ${hi.missing.join(' ')}.` : scope, origin]);
   }

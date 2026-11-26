@@ -165,11 +165,11 @@ function mark(id) {
 }
 
 const STATUS_UI = {
-  above: ['mark-above', 'status-above', 'Above benchmark'],
-  at: ['mark-at', 'status-at', 'At benchmark'],
-  below: ['mark-below', 'status-below', 'Below benchmark'],
-  missing: ['mark-missing', 'status-missing', 'Not reported'],
-  'no-limit': ['mark-scope', 'status-no-limit', 'Mixture screen only'],
+  above: ['mark-above', 'status-above', { en: 'Above benchmark', es: 'Por encima del nivel de referencia' }],
+  at: ['mark-at', 'status-at', { en: 'At benchmark', es: 'En el nivel de referencia' }],
+  below: ['mark-below', 'status-below', { en: 'Below benchmark', es: 'Por debajo del nivel de referencia' }],
+  missing: ['mark-missing', 'status-missing', { en: 'Not reported', es: 'Sin reportar' }],
+  'no-limit': ['mark-scope', 'status-no-limit', { en: 'Mixture screen only', es: 'Solo evaluación de mezcla' }],
 };
 
 function fmt(value, digits = 6) {
@@ -336,11 +336,12 @@ function renderTapList() {
 function renderAction(screen) {
   const box = $('action');
   const spec = ACTIONS[screen.action];
+  const copy = spec[state.lang] ?? spec.en;
   box.className = `action ${spec.cls}`;
   box.replaceChildren();
   const body = el('div', {}, [
-    el('h3', { text: spec.en.title }),
-    el('p', { text: spec.en.body }),
+    el('h3', { lang: state.lang, text: copy.title }),
+    el('p', { lang: state.lang, text: copy.body }),
   ]);
   box.append(mark(spec.icon), body);
 }
@@ -387,18 +388,46 @@ function ratioText(ratio) {
 const WHO_WORD = { above: 'above', at: 'at', below: 'below' };
 
 function epaReference(id) {
-  return id === 'pfbs' ? 'No individual EPA benchmark' : `EPA ${REFERENCE_TEXT[id]}`;
+  const es = state.lang === 'es';
+  if (id === 'pfbs') return es ? 'Sin nivel individual de la EPA' : 'No individual EPA benchmark';
+  if (!es) return `EPA ${REFERENCE_TEXT[id]}`;
+  const text = REFERENCE_TEXT_ES[id];
+  return `EPA, ${text.charAt(0).toLowerCase()}${text.slice(1)}`;
 }
 
 function renderTable(sample, screen) {
-  $('results-caption').textContent =
-    `Single-sample screen for ${sample.tap}. Advisory: ${sample.advisory}. E. coli: ${sample.ecoli}.`;
+  const es = state.lang === 'es';
+  const copy = es
+    ? {
+      contaminant: 'Contaminante', measured: 'Medido', benchmark: 'Nivel de referencia', ratio: 'Proporción', finding: 'Hallazgo',
+      notReported: 'sin reportar', notReportedShort: 'n/d', inIndex: 'en el índice',
+      advisory: { none: 'ninguno', boil: 'hervir el agua', 'do-not-drink': 'no beber el agua', 'do-not-use': 'no usar el agua', unknown: 'desconocido' },
+      ecoli: { present: 'presente', absent: 'ausente', unknown: 'desconocido' },
+    }
+    : {
+      contaminant: 'Contaminant', measured: 'Measured', benchmark: 'Benchmark', ratio: 'Ratio', finding: 'Finding',
+      notReported: 'not reported', notReportedShort: 'n/r', inIndex: 'in index',
+      advisory: { none: 'none', boil: 'boil', 'do-not-drink': 'do-not-drink', 'do-not-use': 'do-not-use', unknown: 'unknown' },
+      ecoli: { present: 'present', absent: 'absent', unknown: 'unknown' },
+    };
+  const roundingWords = es
+    ? { above: 'por encima', at: 'en el nivel', below: 'por debajo' }
+    : { above: 'above', at: 'at', below: 'below' };
+  $('results-table').setAttribute('lang', state.lang);
+  const headings = [copy.contaminant, copy.measured, copy.benchmark, copy.ratio, copy.finding];
+  document.querySelectorAll('#results-table thead th').forEach((th, index) => {
+    th.textContent = headings[index] ?? th.textContent;
+  });
+  $('results-caption').textContent = es
+    ? `Evaluación de una sola muestra para ${sample.tap}. Aviso: ${copy.advisory[sample.advisory] ?? sample.advisory}. E. coli: ${copy.ecoli[sample.ecoli] ?? sample.ecoli}.`
+    : `Single-sample screen for ${sample.tap}. Advisory: ${copy.advisory[sample.advisory] ?? sample.advisory}. E. coli: ${copy.ecoli[sample.ecoli] ?? sample.ecoli}.`;
   const body = $('results-body');
   body.replaceChildren();
   for (const result of screen.results) {
-    const [icon, cls, word] = STATUS_UI[result.status];
+    const [icon, cls, words] = STATUS_UI[result.status];
+    const word = words[state.lang] ?? words.en;
     const measured = result.value === null
-      ? el('span', { class: 'not-reported', text: 'not reported' })
+      ? el('span', { class: 'not-reported', text: copy.notReported })
       : el('span', {}, [
         document.createTextNode(result.value),
         el('span', { class: 'unit', text: result.unit }),
@@ -409,36 +438,42 @@ function renderTable(sample, screen) {
         document.createTextNode(word),
         result.rounded ? el('span', {
           class: 'context',
-          text: `Rule rounding ${result.rounded} ${result.unit} (${result.roundedStatus})`,
+          text: es
+            ? `Redondeo de la regla ${result.rounded} ${result.unit} (${roundingWords[result.roundedStatus] ?? result.roundedStatus})`
+            : `Rule rounding ${result.rounded} ${result.unit} (${result.roundedStatus})`,
         }) : null,
         result.status === 'no-limit' ? el('span', {
           class: 'context',
-          text: 'Counted in the Hazard Index',
+          text: es ? 'Contado en el Índice de Peligro' : 'Counted in the Hazard Index',
         }) : null,
       ]),
     ]);
     const who = WHO_GUIDELINES[result.id];
     const whoState = who ? whoStatus(result.id, result.value) : null;
-    const reference = el('td', { 'data-label': 'Benchmark' }, [
+    const reference = el('td', { 'data-label': copy.benchmark }, [
       el('span', { class: 'ref-epa', text: epaReference(result.id) }),
       who ? el('span', { class: 'ref-who' }, [
-        document.createTextNode(who.text),
-        WHO_WORD[whoState] ? el('span', { class: `who-status status-${whoState}`, text: ` ${WHO_WORD[whoState]}` }) : null,
+        document.createTextNode(es ? who.textEs : who.text),
+        WHO_WORD[whoState] ? el('span', {
+          class: `who-status status-${whoState}`,
+          text: ` ${es ? WHO_WORD_ES[whoState] : WHO_WORD[whoState]}`,
+        }) : null,
       ]) : null,
     ]);
     const ratio = benchmarkRatio(result);
-    const ratioCell = el('td', { class: 'num ratio', 'data-label': 'Ratio' }, ratio === null
-      ? el('span', { class: 'not-reported', text: result.status === 'no-limit' ? 'in index' : 'n/r' })
+    const ratioCell = el('td', { class: 'num ratio', 'data-label': copy.ratio }, ratio === null
+      ? el('span', { class: 'not-reported', text: result.status === 'no-limit' ? copy.inIndex : copy.notReportedShort })
       : [el('span', { class: 'ratio-n', text: ratioText(ratio) }), gauge(ratio, cls)]);
     body.append(el('tr', { class: `row-${result.status}` }, [
-      el('th', { scope: 'row' }, el('span', { class: 'chem-name', text: result.label })),
-      el('td', { class: 'num', 'data-label': 'Measured' }, measured),
+      el('th', { scope: 'row' }, el('span', { class: 'chem-name', text: es ? CHEM_ES[result.id] ?? result.label : result.label })),
+      el('td', { class: 'num', 'data-label': copy.measured }, measured),
       reference,
       ratioCell,
-      el('td', { class: 'wide', 'data-label': 'Finding' }, finding),
+      el('td', { class: 'wide', 'data-label': copy.finding }, finding),
     ]));
   }
 }
+
 
 const READOUT_TONE = {
   above: ['mark-above', 'status-above', 'Above'],
@@ -450,11 +485,14 @@ const READOUT_TONE = {
 
 function readoutCell(label, value, toneKey, detail, word) {
   const [icon, cls, defaultWord] = READOUT_TONE[toneKey];
+  const localizedDefault = state.lang === 'es'
+    ? ({ Above: 'Por encima', At: 'En el nivel', Below: 'Por debajo', 'Not reported': 'Sin reportar', 'Not applicable': 'No aplica' })[defaultWord] ?? defaultWord
+    : defaultWord;
   return el('div', { class: `readout-cell ${cls}` }, [
     el('p', { class: 'readout-label', text: label }),
     el('p', { class: 'readout-value' }, [
       el('span', { class: 'readout-n', text: value }),
-      el('span', { class: 'readout-status' }, [mark(icon), document.createTextNode(word ?? defaultWord)]),
+      el('span', { class: 'readout-status' }, [mark(icon), document.createTextNode(word ?? localizedDefault)]),
     ]),
     detail ? el('p', { class: 'readout-detail', text: detail }) : null,
   ]);
@@ -468,26 +506,48 @@ function renderReadout(view) {
   box.replaceChildren();
   box.hidden = !view;
   if (!view) return;
+  const es = state.lang === 'es';
+  const copy = es
+    ? {
+      highest: 'Proporción más alta respecto al nivel', noBenchmark: 'No se reportó ningún campo con nivel de referencia',
+      pfas: 'Índice de Peligro de PFAS', hiDetail: 'Nivel 1, suma de cuatro proporciones',
+      abovePartial: 'Por encima, parcial', incomplete: 'Incompleto', ecoli: 'E. coli', healthZero: 'La meta de salud es cero',
+      present: 'Presente', absent: 'Ausente', notReported: 'Sin reportar', shortMissing: 'n/d',
+      advisory: 'Aviso reportado', noneActive: 'Ninguno activo', active: 'Activo',
+      advisoryValues: { none: 'Ninguno', boil: 'Hervir', 'do-not-drink': 'No beber', 'do-not-use': 'No usar', unknown: 'Desconocido' },
+    }
+    : {
+      highest: 'Highest benchmark ratio', noBenchmark: 'No benchmarked field reported',
+      pfas: 'PFAS Hazard Index', hiDetail: 'Benchmark 1, sum of four ratios',
+      abovePartial: 'Above, partial', incomplete: 'Incomplete', ecoli: 'E. coli', healthZero: 'Health goal is zero',
+      present: 'Present', absent: 'Absent', notReported: 'Not reported', shortMissing: 'n/r',
+      advisory: 'Reported advisory', noneActive: 'None active', active: 'Active',
+      advisoryValues: ADVISORY_READOUT,
+    };
+  box.setAttribute('lang', state.lang);
   const { sample, screen } = view;
   const rated = screen.results
     .map(result => ({ result, ratio: benchmarkRatio(result) }))
     .filter(item => item.ratio !== null);
   const top = rated.reduce((best, item) => (best === null || item.ratio > best.ratio ? item : best), null);
   box.append(top
-    ? readoutCell('Highest benchmark ratio', ratioText(top.ratio), top.result.status,
-      `${top.result.label} ${top.result.value} \u00f7 ${top.result.limit} ${top.result.unit}`)
-    : readoutCell('Highest benchmark ratio', 'n/r', 'missing', 'No benchmarked field reported'));
+    ? readoutCell(copy.highest, ratioText(top.ratio), top.result.status,
+      `${es ? CHEM_ES[top.result.id] ?? top.result.label : top.result.label} ${top.result.value} \u00f7 ${top.result.limit} ${top.result.unit}`)
+    : readoutCell(copy.highest, copy.shortMissing, 'missing', copy.noBenchmark));
   const hi = screen.mixture;
-  box.append(readoutCell('PFAS Hazard Index', hi.raw ?? 'n/r', HI_TONE[hi.status],
-    'Benchmark 1, sum of four ratios',
-    hi.status === 'above-lower-bound' ? 'Above, partial' : hi.status === 'incomplete' ? 'Incomplete' : undefined));
-  const ecoli = { present: ['above', 'Detected'], absent: ['below', 'Absent'], unknown: ['missing', 'Not reported'] }[sample.ecoli];
-  box.append(readoutCell('E. coli', sample.ecoli === 'present' ? 'Present' : sample.ecoli === 'absent' ? 'Absent' : 'n/r',
-    ecoli[0], 'Health goal is zero', ecoli[1]));
+  box.append(readoutCell(copy.pfas, hi.raw ?? copy.shortMissing, HI_TONE[hi.status],
+    copy.hiDetail,
+    hi.status === 'above-lower-bound' ? copy.abovePartial : hi.status === 'incomplete' ? copy.incomplete : undefined));
+  const ecoli = {
+    present: ['above', copy.present], absent: ['below', copy.absent], unknown: ['missing', copy.notReported],
+  }[sample.ecoli];
+  box.append(readoutCell(copy.ecoli, sample.ecoli === 'present' ? copy.present : sample.ecoli === 'absent' ? copy.absent : copy.shortMissing,
+    ecoli[0], copy.healthZero, ecoli[1]));
   const advisoryTone = sample.advisory === 'none' ? 'below' : sample.advisory === 'unknown' ? 'missing' : 'above';
-  box.append(readoutCell('Reported advisory', ADVISORY_READOUT[sample.advisory] ?? sample.advisory, advisoryTone,
-    null, advisoryTone === 'below' ? 'None active' : advisoryTone === 'missing' ? 'Not reported' : 'Active'));
+  box.append(readoutCell(copy.advisory, copy.advisoryValues[sample.advisory] ?? sample.advisory, advisoryTone,
+    null, advisoryTone === 'below' ? copy.noneActive : advisoryTone === 'missing' ? copy.notReported : copy.active));
 }
+
 
 const DIAG_ICON = { urgent: 'mark-above', caution: 'mark-at', info: 'mark-missing', clear: 'mark-below' };
 
@@ -522,16 +582,32 @@ function renderDiagnostic(view) {
 function renderNotes(sample, screen) {
   const notes = $('report-notes');
   notes.replaceChildren();
+  const es = state.lang === 'es';
+  notes.setAttribute('lang', state.lang);
   const parts = [];
+  const legacyWord = {
+    above: es ? 'por encima' : 'above',
+    at: es ? 'en el nivel' : 'at',
+    below: es ? 'por debajo' : 'below',
+  }[screen.legacyLead] ?? screen.legacyLead;
   if (screen.legacyLead !== 'missing') {
-    parts.push(`The current federal lead action level is 15 ppb for a public system's 90th percentile; EPA LCRI uses 10 ppb beginning November 1, 2027. This reading is ${screen.legacyLead} against 15 ppb. Neither action level is a safe-exposure threshold, and there is no known safe level of lead exposure.`);
+    parts.push(es
+      ? `El nivel de acción federal actual del plomo es 15 ppb para el percentil 90 de un sistema público; la LCRI de la EPA usa 10 ppb desde el 1 de noviembre de 2027. Esta lectura está ${legacyWord} respecto a 15 ppb. Ningún nivel de acción es un umbral de exposición segura, y no hay un nivel conocido seguro de exposición al plomo.`
+      : `The current federal lead action level is 15 ppb for a public system's 90th percentile; EPA LCRI uses 10 ppb beginning November 1, 2027. This reading is ${screen.legacyLead} against 15 ppb. Neither action level is a safe-exposure threshold, and there is no known safe level of lead exposure.`);
   }
   if (screen.unknowns.length) {
-    parts.push(`Unreported for this tap: ${screen.unknowns.map(id => UNKNOWN_NAMES[id] ?? id).join(', ')}.`);
+    const names = screen.unknowns.map(id => (es ? UNKNOWN_NAMES_ES[id] : UNKNOWN_NAMES[id]) ?? id).join(', ');
+    parts.push(es ? `Sin reportar para este grifo: ${names}.` : `Unreported for this tap: ${names}.`);
   }
-  parts.push('Findings compare the unrounded reading with the EPA benchmark. WHO guideline values are shown for comparison; WHO sets no final guideline value for these PFAS.');
-  parts.push('E. coli\'s federal health goal is zero (absence); official compliance depends on routine and repeat tests, not this reading alone.');
-  parts.push('One tap, one sample: this is a screening context, never a compliance determination or a potability clearance.');
+  parts.push(es
+    ? 'Los hallazgos comparan la lectura sin redondear con el nivel de referencia de la EPA. Los valores guía de la OMS se muestran para comparar; la OMS no establece un valor guía final para estos PFAS.'
+    : 'Findings compare the unrounded reading with the EPA benchmark. WHO guideline values are shown for comparison; WHO sets no final guideline value for these PFAS.');
+  parts.push(es
+    ? 'La meta federal de salud para E. coli es cero (ausencia); el cumplimiento oficial depende de pruebas rutinarias y repetidas, no solo de esta lectura.'
+    : 'E. coli\'s federal health goal is zero (absence); official compliance depends on routine and repeat tests, not this reading alone.');
+  parts.push(es
+    ? 'Un grifo, una muestra: este es un contexto de evaluación, nunca una determinación de cumplimiento ni una autorización de potabilidad.'
+    : 'One tap, one sample: this is a screening context, never a compliance determination or a potability clearance.');
   notes.append(...parts.map(text => el('p', { class: 'notes', text })));
 }
 
@@ -577,13 +653,14 @@ function renderMobileAction(view) {
   // Urgent actions keep only their first instruction; every other verdict
   // keeps its whole body so its screening caveat is never cut.
   const spec = ACTIONS[view.screen.action];
+  const copy = spec[state.lang] ?? spec.en;
   const urgent = ['co-occurrence', 'do-not-use', 'do-not-drink'].includes(view.screen.action);
   box.className = `mobile-action tone-${spec.cls}`;
   box.append(
     mark(spec.icon),
     el('span', { class: 'mobile-action-tap', text: view.sample.tap }),
-    el('strong', { text: spec.en.title }),
-    el('p', { text: urgent ? `${spec.en.body.split('. ')[0]}.` : spec.en.body }),
+    el('strong', { lang: state.lang, text: copy.title }),
+    el('p', { lang: state.lang, text: urgent ? `${copy.body.split('. ')[0]}.` : copy.body }),
     el('a', { href: '#report', text: 'Read the tap report' }),
   );
 }
@@ -1235,8 +1312,8 @@ function setupLab() {
       }),
       onLanguage: lang => {
         state.lang = lang;
-        renderDiagnostic(current());
-        renderPrintSheet(current());
+        renderReport();
+        renderMobileAction(current());
       },
     });
     section.hidden = false;

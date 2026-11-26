@@ -213,6 +213,8 @@ try {
       `[...document.querySelectorAll('#results-body tr')][2].querySelector('.who-status').textContent.trim() === 'above'`));
     check('co-occurrence urgent banner', await evaluate(
       `document.querySelector('#action').className.includes('urgent') && document.querySelector('#action h3').textContent === 'Do not boil this tap water for drinking or infant formula'`));
+    check('storm advisory card qualifies boiling with nitrate on screen and print', await evaluate(
+      `document.querySelector('#diagnostic [data-diag="advisory"]')?.textContent.includes('boiling does not make this tap water safe for infant formula') && document.querySelector('#print-sheet .ps-diag')?.textContent.includes('boiling does not make this tap water safe for infant formula') && document.querySelector('#print-sheet .ps-diag')?.textContent.includes('hervir no hace que esta agua del grifo sea segura para preparar fórmula infantil')`));
 
     // Failed import via real click on Apply after editing the textarea.
     await setCsv('tap,advisory,lead_ppb\nBad tap,none,ND');
@@ -392,6 +394,37 @@ try {
     await waitFor(`document.querySelector('#diagnostic h3')?.getAttribute('lang') === 'es'`);
     const stressPdfEs = Buffer.from((await cmd('Page.printToPDF', { printBackground: true })).data, 'base64');
     check('100-character tap stress sheet prints one page in Spanish', pdfPages(stressPdfEs) === 1, `pages=${pdfPages(stressPdfEs)}`);
+    await click('#lab-lang-en');
+
+    // Sparse Spanish audit: exact statuses, EPA/WHO references, print tags, and chart shorthand.
+    const localeCsv = 'tap,advisory,ecoli,lead_ppb,copper_ppb,nitrate_mg_l_as_n,arsenic_ppb,pfoa_ppt,pfos_ppt,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nLocalization tap,none,absent,12,1300,10,5,,,2.99,3.99,4.99,0';
+    await setCsv(localeCsv);
+    await click('#apply');
+    check('localization audit sample applies', await waitFor(
+      `document.querySelector('#results-caption')?.textContent.includes('Localization tap') && document.querySelectorAll('#results-body tr').length === 10`));
+    await click('#lab-lang-es');
+    check('Spanish report has zero leftover English benchmark or status labels', await waitFor(`(() => {
+      const table = document.querySelector('#results-table');
+      const text = [table, document.querySelector('#readout'), document.querySelector('#action'), document.querySelector('#report-notes')]
+        .map(node => node?.textContent ?? '').join(' ');
+      const required = table?.getAttribute('lang') === 'es'
+        && table.textContent.includes('OMS 10 ppb (provisional)')
+        && table.textContent.includes('Por encima del nivel de referencia')
+        && table.textContent.includes('En el nivel de referencia')
+        && table.textContent.includes('Por debajo del nivel de referencia')
+        && table.textContent.includes('Sin reportar')
+        && table.textContent.includes('Redondeo de la regla')
+        && table.textContent.includes('Contado en el Índice de Peligro');
+      const forbidden = /(Above benchmark|At benchmark|Below benchmark|Not reported|Mixture screen only|Rule rounding|Counted in the Hazard Index|No individual EPA benchmark|\bWHO\b|\bHI = 1\b|\babove\b|\bbelow\b|\bat\b)/;
+      return Boolean(required && !forbidden.test(text) && !text.includes('n/r'));
+    })()`));
+    check('Spanish screen and print preserve both provisional WHO tags', await evaluate(
+      `[...document.querySelectorAll('#results-body .ref-who')].filter(node => node.textContent.includes('(provisional)')).length === 2 && (document.querySelector('#print-sheet .ps-table').textContent.match(/\(provisional\)/g) ?? []).length === 4`));
+    check('Spanish lab charts replace HI and n/r shorthand', await evaluate(`(() => {
+      const charts = [...document.querySelectorAll('.lab-chart')].map(node => node.textContent).join(' ');
+      const lab = document.querySelector('#lab-body')?.textContent ?? '';
+      return charts.includes('IP = 1') && charts.includes('n/d') && !charts.includes('HI = 1') && !charts.includes('n/r') && !lab.includes('n/r');
+    })()`));
     await click('#lab-lang-en');
 
     check('zero console errors', consoleErrors.length === 0, consoleErrors.join(' | '));

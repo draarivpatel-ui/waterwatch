@@ -646,7 +646,7 @@ export const STRINGS = {
     colPfoa: 'PFOA ratio', colPfos: 'PFOS ratio', colPb10: 'Lead vs 10 ppb', colPb15: 'Lead vs 15 ppb',
     colNitrate: 'Nitrate ratio', colArsenic: 'Arsenic ratio', colCopper: 'Copper ratio',
     colUnreported: 'Unreported', colFlags: 'Advisory / E. coli', colAction: 'Action',
-    notReported: 'not reported',
+    notReported: 'not reported', notReportedShort: 'n/r', notApplicableShort: 'n/a',
     scenarioTitle: 'Illustrative scenario matrix',
     scenarioNote: 'Baseline readings against three teaching models. A modeled cell is illustrative only, never a clearance, and arsenic coverage is not implied where unverified.',
     scenario: { baseline: 'Baseline', flush: 'First-draw flush', carbon: 'Carbon, illustrative', ro: 'RO, illustrative' },
@@ -710,7 +710,7 @@ export const STRINGS = {
     colPfoa: 'Proporción PFOA', colPfos: 'Proporción PFOS', colPb10: 'Plomo vs 10 ppb', colPb15: 'Plomo vs 15 ppb',
     colNitrate: 'Proporción nitrato', colArsenic: 'Proporción arsénico', colCopper: 'Proporción cobre',
     colUnreported: 'Sin reportar', colFlags: 'Aviso / E. coli', colAction: 'Acción',
-    notReported: 'sin reportar',
+    notReported: 'sin reportar', notReportedShort: 'n/d', notApplicableShort: 'n/d',
     scenarioTitle: 'Matriz de escenarios ilustrativos',
     scenarioNote: 'Lecturas de referencia contra tres modelos didácticos. Una celda modelada es solo ilustrativa, nunca una autorización, y la cobertura de arsénico no se implica donde no está verificada.',
     scenario: { baseline: 'Referencia', flush: 'Purga de primera extracción', carbon: 'Carbón, ilustrativo', ro: 'Ósmosis inversa, ilustrativa' },
@@ -725,7 +725,7 @@ export const STRINGS = {
     ratioChartTitle: 'Proporción respecto al nivel de referencia',
     ratioChartNote: 'Las barras comparan cada valor medido con su nivel de referencia. PFBS se dibuja contra su entrada de mezcla de 2000 ppt, no contra un MCL. Los campos sin reportar quedan huecos.',
     hiMissing: names => `Constituyentes sin reportar: ${names}.`,
-    hiLine: 'HI = 1', lowerBound: 'cota inferior', quotient: 'cociente',
+    hiLine: 'IP = 1', lowerBound: 'cota inferior', quotient: 'cociente',
     exportsTitle: 'Informe auditado del laboratorio',
     exportsNote: 'Un solo resumen estampa la línea en pantalla, la descarga JSON, el encabezado de procedencia del CSV y el pie del Markdown.',
     btnJson: 'JSON', btnCsv: 'CSV', btnMd: 'Markdown', btnCopy: 'Copiar enlace',
@@ -898,8 +898,8 @@ export function mountLab(root, hooks = {}) {
     ])));
     const body = el('tbody');
     const ratioCell = entry => {
-      if (entry.value === null) return el('td', { class: 'num' }, el('span', { class: 'not-reported', text: 'n/r' }));
-      const text = entry.ratio === null ? 'n/a' : `${fmtRatio(entry.ratio)}x`;
+      if (entry.value === null) return el('td', { class: 'num' }, el('span', { class: 'not-reported', text: t.notReportedShort }));
+      const text = entry.ratio === null ? t.notApplicableShort : `${fmtRatio(entry.ratio)}x`;
       return el('td', { class: `num lab-${entry.status}` }, [
         document.createTextNode(text),
         el('span', { class: 'unit', text: statusWord(entry.status) }),
@@ -926,17 +926,17 @@ export function mountLab(root, hooks = {}) {
         el('th', { scope: 'row' }, pick),
         el('td', { text: row.tapCount > 1 ? `${row.tap} (${t.tapCount(row.tapCount)})` : row.tap }),
         el('td', { class: `num lab-${row.mixture.status}` }, [
-          document.createTextNode(row.mixture.raw ?? 'n/a'),
+          document.createTextNode(row.mixture.raw ?? t.notApplicableShort),
           el('span', { class: 'unit', text: statusWord(row.mixture.status) }),
         ]),
         el('td', { class: 'num', text: String(row.mixture.positives) }),
         ratioCell(row.ratios.pfoa), ratioCell(row.ratios.pfos),
         el('td', { class: `num lab-${row.ratios.lead.status}` }, [
-          document.createTextNode(row.ratios.lead.value ?? 'n/r'),
+          document.createTextNode(row.ratios.lead.value ?? t.notReportedShort),
           row.ratios.lead.value === null ? null : el('span', { class: 'unit', text: statusWord(row.ratios.lead.status) }),
         ]),
         el('td', { class: `num lab-${row.legacyLead}` }, [
-          document.createTextNode(row.legacyLead === 'missing' ? 'n/r' : statusWord(row.legacyLead)),
+          document.createTextNode(row.legacyLead === 'missing' ? t.notReportedShort : statusWord(row.legacyLead)),
         ]),
         ratioCell(row.ratios.nitrate), ratioCell(row.ratios.arsenic), ratioCell(row.ratios.copper),
         el('td', { class: 'num', text: String(row.unreported) }),
@@ -993,7 +993,7 @@ export function mountLab(root, hooks = {}) {
       body.append(el('tr', { class: lab.focus === row.id ? 'lab-active' : '' }, [
         el('th', { scope: 'row' }, focusPick(row.id)),
         el('td', { class: 'num' }, [
-          document.createTextNode(row.baseline.value ?? 'n/r'),
+          document.createTextNode(row.baseline.value ?? t.notReportedShort),
           row.baseline.value === null ? null : el('span', { class: 'unit', text: row.unit }),
         ]),
         el('td', { class: `num lab-cell-${row.cell.kind}`, text: cellText(row.cell) }),
@@ -1006,7 +1006,7 @@ export function mountLab(root, hooks = {}) {
       : (t.cell[hi.cell.kind] ?? hi.cell.kind);
     body.append(el('tr', { class: `lab-hi-row${lab.focus === 'hazard-index' ? ' lab-active' : ''}` }, [
       el('th', { scope: 'row' }, focusPick('hazard-index')),
-      el('td', { class: 'num', text: hi.baseline.value ?? 'n/a' }),
+      el('td', { class: 'num', text: hi.baseline.value ?? t.notApplicableShort }),
       el('td', { class: `num lab-cell-${hi.cell.kind}`, text: hiCell }),
       el('td', { text: statusWord(hi.baseline.status) }),
     ]));
@@ -1082,7 +1082,7 @@ export function mountLab(root, hooks = {}) {
           x: mx, y: MT, width: 6, height: BAR, class: 'seg-missing',
         }));
         const mt = svgEl('text', { x: mx + 9, y: MT + BAR / 2 + 3.5, class: 'seg-label' });
-        mt.textContent = `${names[term.id]} n/r`;
+        mt.textContent = `${names[term.id]} ${t.notReportedShort}`;
         g.append(mt);
         svg.append(g);
         continue;
@@ -1100,7 +1100,7 @@ export function mountLab(root, hooks = {}) {
       svg.append(g);
     }
     const total = svgEl('text', { x: W - MR, y: MT + BAR + 24, 'text-anchor': 'end', class: 'seg-total' });
-    total.textContent = `${t.colHI}: ${summary.mixture.raw ?? 'n/a'} (${statusWord(summary.mixture.status)})`;
+    total.textContent = `${t.colHI}: ${summary.mixture.raw ?? t.notApplicableShort} (${statusWord(summary.mixture.status)})`;
     svg.append(total);
     return svg;
   }
@@ -1139,7 +1139,7 @@ export function mountLab(root, hooks = {}) {
           x: ML, y: y + 6, width: x(0.5) - ML, height: ROWH - 12, class: 'bar-missing',
         }));
         const nrt = svgEl('text', { x: x(0.5) + 6, y: y + 17, class: 'seg-label' });
-        nrt.textContent = 'n/r';
+        nrt.textContent = t.notReportedShort;
         g.append(nrt);
       } else {
         const r = Number(entry.value) / Number(entry.reference);
@@ -1253,7 +1253,7 @@ export function mountLab(root, hooks = {}) {
             : t.cell[cell.kind] ?? cell.kind)
           : t.scenario[lab.scenario];
         const baseText = isHi
-          ? `${view.summary.mixture.raw ?? 'n/a'} (${statusWord(view.summary.mixture.status)})`
+          ? `${view.summary.mixture.raw ?? t.notApplicableShort} (${statusWord(view.summary.mixture.status)})`
           : entry && entry.value !== null
             ? `${entry.value} ${entry.unit} (${statusWord(entry.status)})`
             : t.notReported;
@@ -1306,7 +1306,7 @@ export function mountLab(root, hooks = {}) {
 
     root.append(el('p', {
       class: 'fingerprint lab-digest',
-      text: brief ? `${t.digestLabel}: ${brief.fingerprint}` : `${t.digestLabel}: n/a`,
+      text: brief ? `${t.digestLabel}: ${brief.fingerprint}` : `${t.digestLabel}: ${t.notApplicableShort}`,
     }));
     root.append(el('input', {
       type: 'text', readonly: '', class: 'lab-link', 'aria-label': t.shareLabel,
