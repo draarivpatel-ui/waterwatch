@@ -15,29 +15,47 @@ const LABELS = new Map([
   ['mixture-lab', 'mixture-lab.test.js'],
   ['pfas-signal', 'pfas-signal.test.js'],
   ['SDG 6 equity', 'sdg6-equity.test.js'],
+  ['script-safety', 'script-safety.test.js'],
   ['shortcuts', 'shortcuts.test.js'],
 ]);
 
+function tapCount(output, label, file) {
+  const value = Number(output.match(new RegExp(`^# ${label} (\\d+)$`, 'm'))?.[1] ?? NaN);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${file}: TAP summary is missing an integer # ${label} count`);
+  }
+  return value;
+}
+
 function runSuite(file) {
   return new Promise((resolveRun, rejectRun) => {
-    const child = spawn(process.execPath, ['--test', '--test-concurrency=1', join('test', file)], {
+    const child = spawn(process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap', join('test', file)], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    let output = '';
-    child.stdout.on('data', chunk => { output += chunk; });
-    child.stderr.on('data', chunk => { output += chunk; });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
     child.on('error', rejectRun);
     child.on('close', code => {
-      const pass = Number(output.match(/^ℹ pass (\d+)$/m)?.[1] ?? NaN);
-      const fail = Number(output.match(/^ℹ fail (\d+)$/m)?.[1] ?? NaN);
-      resolveRun({ file, code, pass, fail, output });
+      try {
+        const pass = tapCount(stdout, 'pass', file);
+        const fail = tapCount(stdout, 'fail', file);
+        const tests = tapCount(stdout, 'tests', file);
+        if (pass + fail > tests) {
+          throw new Error(`${file}: TAP pass and fail counts exceed the test count`);
+        }
+        resolveRun({ file, code, pass, fail, tests, output: stdout + stderr });
+      } catch (error) {
+        rejectRun(error);
+      }
     });
   });
 }
 
 const readme = await readFile(join(ROOT, 'README.md'), 'utf8');
-const readmeMatch = readme.match(/The suite has (\d+) tests:\s*diagnostic (\d+), engine (\d+), exports (\d+), hygiene (\d+), import (\d+), mixture-lab (\d+),\s*pfas-signal (\d+), SDG 6 equity (\d+), shortcuts (\d+); lab modules (\d+); page self-tests (\d+)\./);
+const readmeMatch = readme.match(/The suite has (\d+) tests:\s*diagnostic (\d+), engine (\d+), exports (\d+), hygiene (\d+), import (\d+), mixture-lab (\d+),\s*pfas-signal (\d+), SDG 6 equity (\d+), script-safety (\d+), shortcuts (\d+); lab modules (\d+); page self-tests (\d+)\./);
 if (!readmeMatch) {
   console.error('README test-count sentence is missing or not in the expected format.');
   process.exit(1);

@@ -3,12 +3,12 @@
 // Run: node scripts/browser-smoke.mjs
 import { spawn, execFile } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFile, writeFile, mkdtemp, mkdir, rm, readdir } from 'node:fs/promises';
+import { readFile, writeFile, rm, readdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, extname, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { createScratchDir } from './scratch-dir.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -35,22 +35,6 @@ const check = (name, ok, detail = '') => {
 };
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-async function freshDir(path) {
-  const target = resolve(path);
-  const allowedTmp = resolve(tmpdir());
-  const allowedAgentWork = resolve('/private/tmp/agent-work');
-  if (!target.startsWith(`${allowedTmp}/`) && !target.startsWith(`${allowedAgentWork}/`)) {
-    throw new Error(`refusing to reset a directory outside temporary scratch space: ${target}`);
-  }
-  await rm(target, { recursive: true, force: true });
-  await mkdir(target, { recursive: true });
-  return target;
-}
-
-async function workDir(prefix, override) {
-  return override ? freshDir(override) : mkdtemp(join(tmpdir(), prefix));
-}
 
 /* ---------- static server ---------- */
 
@@ -79,8 +63,8 @@ let dlDir;
 let exitCode = 0;
 
 try {
-  profile = await workDir('ww-chrome-', process.env.WW_CHROME_USER_DATA_DIR);
-  dlDir = await workDir('ww-dl-', process.env.WW_DOWNLOAD_DIR);
+  profile = createScratchDir('waterwatch-smoke-profile-', process.env.WW_CHROME_USER_DATA_DIR);
+  dlDir = createScratchDir('waterwatch-smoke-download-', process.env.WW_DOWNLOAD_DIR);
   chrome = spawn(CHROME, [
     '--headless=new', '--mute-audio', '--disable-gpu', '--no-first-run',
     '--no-default-browser-check', '--hide-crash-restore-bubble',
