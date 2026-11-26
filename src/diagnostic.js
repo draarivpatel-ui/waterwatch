@@ -120,29 +120,37 @@ function resultFor(screen, id) {
 
 function leadPairContext(samples, sample, active) {
   if (!sample.pairId || !PAIR_DRAWS.has(sample.drawType) || sample.values?.lead == null) return null;
-  const companions = samples
-    .map((other, index) => ({ row: other, index }))
-    .filter(({ row, index }) => index !== active
-      && row.pairId === sample.pairId
+  const group = samples
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => row.pairId === sample.pairId
       && PAIR_DRAWS.has(row.drawType)
       && row.values?.lead != null);
-  const choose = drawType => {
-    if (sample.drawType === drawType) return { row: sample, index: active };
-    const matches = companions.filter(({ row }) => row.drawType === drawType);
+  if (!group.some(({ index }) => index === active)) return null;
+  const rowsFor = drawType => group.filter(({ row }) => row.drawType === drawType);
+  const chooseHighest = drawType => {
+    const matches = rowsFor(drawType);
     if (!matches.length) return null;
     return matches.reduce((best, item) =>
-      (Number(item.row.values.lead) < Number(best.row.values.lead) ? item : best));
+      (units(item.row.values.lead) > units(best.row.values.lead) ? item : best));
   };
-  const first = choose('first-draw');
-  const flushed = choose('flushed');
-  return first && flushed ? { first, flushed } : null;
+  const firstRows = rowsFor('first-draw');
+  const flushedRows = rowsFor('flushed');
+  const first = chooseHighest('first-draw');
+  const flushed = chooseHighest('flushed');
+  return first && flushed ? {
+    first,
+    flushed,
+    firstCount: firstRows.length,
+    flushedCount: flushedRows.length,
+    repeated: firstRows.length > 1 || flushedRows.length > 1,
+  } : null;
 }
 
 function leadAtOrAbove(value) {
   return units(String(value)) >= units('10');
 }
 
-function leadPairFinding(pair) {
+function leadPairFindingBase(pair) {
   const firstText = pair.first.row.values.lead;
   const flushedText = pair.flushed.row.values.lead;
   const firstValue = Number(firstText);
@@ -211,6 +219,64 @@ function leadPairFinding(pair) {
     };
   }
   return null;
+}
+
+function pluralEn(count, singular, plural) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function pluralEs(count, singular, plural) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function pairCompactCopy(pair, id) {
+  const firstText = pair.first.row.values.lead;
+  const flushedText = pair.flushed.row.values.lead;
+  const firstEs = esDecimal(firstText);
+  const flushedEs = esDecimal(flushedText);
+  const copy = {
+    'lead-rises': [
+      `Paired lead ${firstText} -> ${flushedText} ppb: flushed draw higher; check service line/upstream supply; resample.`,
+      `Plomo pareado ${firstEs} -> ${flushedEs} ppb: purga más alta; revise línea de servicio/suministro; repita.`,
+    ],
+    'lead-local-shared': [
+      `Paired lead ${firstText} -> ${flushedText} ppb: check fixture plus upstream/shared plumbing; resample.`,
+      `Plomo pareado ${firstEs} -> ${flushedEs} ppb: revise grifo y plomería aguas arriba/compartida; repita.`,
+    ],
+    'lead-local': [
+      `Paired lead ${firstText} -> ${flushedText} ppb: large drop points near the tap or fixture; resample.`,
+      `Plomo pareado ${firstEs} -> ${flushedEs} ppb: caída grande cerca del grifo o accesorio; repita.`,
+    ],
+    'lead-drops-below': [
+      `Paired lead ${firstText} -> ${flushedText} ppb: flushed draw is below 10 ppb; resample before clearance.`,
+      `Plomo pareado ${firstEs} -> ${flushedEs} ppb: purga debajo de 10 ppb; repita antes de autorizar.`,
+    ],
+    'lead-shared': [
+      `Paired lead ${firstText} -> ${flushedText} ppb: both high; check shared plumbing and corrosion control; resample.`,
+      `Plomo pareado ${firstEs} -> ${flushedEs} ppb: ambos altos; revise plomería compartida y corrosión; repita.`,
+    ],
+  }[id] ?? [
+    `Paired lead ${firstText} -> ${flushedText} ppb: share the pair and resample.`,
+    `Plomo pareado ${firstEs} -> ${flushedEs} ppb: comparta el par y repita.`,
+  ];
+  return { compactEn: copy[0], compactEs: copy[1] };
+}
+
+function leadPairFinding(pair) {
+  const finding = leadPairFindingBase(pair);
+  if (!finding) return null;
+  const repeatedEn = pair.repeated
+    ? ` This pair_id has ${pluralEn(pair.firstCount, 'first-draw row', 'first-draw rows')} and ${pluralEn(pair.flushedCount, 'flushed row', 'flushed rows')} with lead results. The highest reported result for each draw type is used once, so every row in the pair carries the same source interpretation.`
+    : '';
+  const repeatedEs = pair.repeated
+    ? ` Este pair_id tiene ${pluralEs(pair.firstCount, 'fila de primera extracción', 'filas de primera extracción')} y ${pluralEs(pair.flushedCount, 'fila de purga', 'filas de purga')} con resultados de plomo. Se usa una vez el resultado más alto de cada tipo de extracción, así que cada fila del par lleva la misma interpretación de fuente.`
+    : '';
+  return {
+    ...finding,
+    evidence: `${finding.evidence}${repeatedEn}`,
+    evidenceEs: `${finding.evidenceEs}${repeatedEs}`,
+    ...pairCompactCopy(pair, finding.id),
+  };
 }
 
 function mixtureWording(mix) {

@@ -1296,9 +1296,13 @@ function renderPrintSheet(view) {
     text: `PFAS Hazard Index / Índice de Peligro de PFAS = ${hi.terms.map(term => `${names[term.id]}/${term.denominator}`).join(' + ')} = ${hi.terms.map(term => term.quotient ?? missingBi).join(' + ')} = ${hi.raw ?? missingBi} (${HI_STATUS_BI[hi.status] ?? hi.status}; ${hiKind}${hiPartial}; benchmark 1 / nivel 1)`,
   }));
 
+  const printFindings = findings.slice(0, 3);
+  const overflowFindings = findings.slice(3);
+  const overflowPair = overflowFindings.find(finding => finding.id.startsWith('lead-') && finding.compactEn);
+  const unnotedOverflow = overflowFindings.length - (overflowPair ? 1 : 0);
   sheet.append(el('section', { class: 'ps-diagnostic-section' }, [
     biHeading('h2', 'Likely sources and field steps', 'Fuentes probables y pasos de campo'),
-    el('ol', { class: 'ps-diag' }, findings.slice(0, 3).map(finding => el('li', {}, [
+    el('ol', { class: 'ps-diag' }, printFindings.map(finding => el('li', {}, [
       el('div', { class: 'ps-diag-lang', lang: 'en' }, [
         el('strong', { text: `${finding.title}. ` }),
         document.createTextNode(`${finding.evidence} ${finding.action}`),
@@ -1310,8 +1314,13 @@ function renderPrintSheet(view) {
         finding.cite ? el('em', { text: ` Fuentes comunes (${finding.cite.citeEs}): ${finding.cite.textEs}` }) : null,
       ]),
     ]))),
-    findings.length > 3 ? el('p', {
-      text: `${findings.length - 3} more pattern${findings.length - 3 === 1 ? '' : 's'} in the app / ${findings.length - 3} patrón${findings.length - 3 === 1 ? '' : 'es'} más en la aplicación.`,
+    overflowPair ? el('p', { class: 'ps-pair-note' }, [
+      el('span', { lang: 'en', text: overflowPair.compactEn }),
+      document.createTextNode(' / '),
+      el('span', { lang: 'es', text: overflowPair.compactEs }),
+    ]) : null,
+    unnotedOverflow > 0 ? el('p', {
+      text: `${unnotedOverflow} more pattern${unnotedOverflow === 1 ? '' : 's'} in the app / ${unnotedOverflow} patrón${unnotedOverflow === 1 ? '' : 'es'} más en la aplicación.`,
     }) : null,
   ]));
 

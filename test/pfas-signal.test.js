@@ -30,6 +30,26 @@ test('one quantified constituent below 1 plus sub-quantitation terms is combined
   assert.doesNotMatch(classification.text.en, /single-compound/);
 });
 
+test('one quantified constituent with every other term unreported is never combined', () => {
+  const hi = mixture({ pfhxs: '3' });
+  const classification = classifyPfasMixture(hi);
+  assert.equal(hi.raw, '0.3');
+  assert.equal(classification.kind, 'single-compound');
+  assert.equal(classification.quantifiedCount, 1);
+  assert.equal(classification.driver.id, 'pfhxs');
+  assert.equal(classification.driver.quotient, '0.3');
+  assert.doesNotMatch(classification.text.en, /combined|below-quantitation terms/);
+  assert.doesNotMatch(classification.text.es, /combinada|por debajo del nivel de cuantificación aportan/);
+});
+
+test('zero-valued companions do not create a combined signal', () => {
+  const hi = mixture({ pfhxs: '3', pfna: '0', genx: '0', pfbs: '0' });
+  const classification = classifyPfasMixture(hi);
+  assert.equal(hi.raw, '0.3');
+  assert.equal(classification.kind, 'single-compound');
+  assert.doesNotMatch(classification.text.en, /combined|below-quantitation terms/);
+});
+
 test('one quantified constituent at or above 1 alone is the single-compound driver', () => {
   const hi = mixture({ pfhxs: '0', pfna: '0', genx: '0', pfbs: '5000' });
   const classification = classifyPfasMixture(hi);

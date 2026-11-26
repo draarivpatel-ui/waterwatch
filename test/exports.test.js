@@ -124,6 +124,10 @@ test('audit CSV labels below-quantitation, single-compound, and true mixture sum
     values: { pfhxs: '3.00', pfna: '3.99', genx: '4.99', pfbs: '0' } }]);
   assert.match(combined, /"PFAS combined screening signal","1\.198","unitless","1"/);
   assert.doesNotMatch(combined, /single-compound|below-quantitation screening sum","1\.198/);
+  const loneReported = auditCsv([{ tap: 'PFHxS only', advisory: 'none', ecoli: 'absent',
+    values: { pfhxs: '3' } }]);
+  assert.match(loneReported, /"PFAS single-compound screening signal","0\.3","unitless","1"/);
+  assert.doesNotMatch(loneReported, /combined screening signal|below-quantitation terms/);
 });
 
 test('fingerprint is SHA-256 of canonical payload UTF-8 bytes and preserves exact data', async () => {

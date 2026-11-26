@@ -1,13 +1,14 @@
 // Headless-Chrome smoke run for WaterWatch. No dependencies: a tiny static
 // server plus raw CDP over the built-in WebSocket (Node 22+).
 // Run: node scripts/browser-smoke.mjs
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFile, writeFile, mkdtemp, rm, readdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp, mkdir, rm, readdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, extname, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -26,6 +27,7 @@ if (typeof WebSocket !== 'function') {
   process.exit(2);
 }
 
+const execFileAsync = promisify(execFile);
 const results = [];
 const check = (name, ok, detail = '') => {
   results.push({ name, ok, detail });
@@ -33,6 +35,22 @@ const check = (name, ok, detail = '') => {
 };
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function freshDir(path) {
+  const target = resolve(path);
+  const allowedTmp = resolve(tmpdir());
+  const allowedAgentWork = resolve('/private/tmp/agent-work');
+  if (!target.startsWith(`${allowedTmp}/`) && !target.startsWith(`${allowedAgentWork}/`)) {
+    throw new Error(`refusing to reset a directory outside temporary scratch space: ${target}`);
+  }
+  await rm(target, { recursive: true, force: true });
+  await mkdir(target, { recursive: true });
+  return target;
+}
+
+async function workDir(prefix, override) {
+  return override ? freshDir(override) : mkdtemp(join(tmpdir(), prefix));
+}
 
 /* ---------- static server ---------- */
 
@@ -61,8 +79,8 @@ let dlDir;
 let exitCode = 0;
 
 try {
-  profile = await mkdtemp(join(tmpdir(), 'ww-chrome-'));
-  dlDir = await mkdtemp(join(tmpdir(), 'ww-dl-'));
+  profile = await workDir('ww-chrome-', process.env.WW_CHROME_USER_DATA_DIR);
+  dlDir = await workDir('ww-dl-', process.env.WW_DOWNLOAD_DIR);
   chrome = spawn(CHROME, [
     '--headless=new', '--mute-audio', '--disable-gpu', '--no-first-run',
     '--no-default-browser-check', '--hide-crash-restore-bubble',
@@ -167,6 +185,51 @@ try {
     if (direct) return direct;
     const counts = [...text.matchAll(/\/Count\s+(\d+)/g)].map(m => Number(m[1]));
     return counts.length ? Math.max(...counts) : 0;
+  }
+
+  function ppmEdgeInk(buf) {
+    const head = buf.subarray(0, 120).toString('latin1').match(/^P6\s+(\d+)\s+(\d+)\s+(\d+)\s/);
+    if (!head) return { error: 'unreadable raster' };
+    const width = Number(head[1]);
+    const height = Number(head[2]);
+    const maxval = Number(head[3]);
+    const offset = head[0].length;
+    if (maxval !== 255 || buf.length < offset + width * height * 3) return { error: 'bad raster shape' };
+    const band = 6;
+    let ink = 0;
+    const marked = (x, y) => {
+      const at = offset + (y * width + x) * 3;
+      return buf[at] < 250 || buf[at + 1] < 250 || buf[at + 2] < 250;
+    };
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (x < band || x >= width - band || y < band || y >= height - band) {
+          if (marked(x, y)) ink += 1;
+        }
+      }
+    }
+    return { ink, width, height, band };
+  }
+
+  async function inspectPdf(buf, label) {
+    const safe = label.replace(/[^a-z0-9-]+/gi, '-');
+    const pdfPath = join(dlDir, `${safe}.pdf`);
+    const rasterPrefix = join(dlDir, `${safe}-page`);
+    await writeFile(pdfPath, buf);
+    const out = { pages: pdfPages(buf), text: '', edge: { error: 'not run' } };
+    try {
+      const textRun = await execFileAsync('pdftotext', ['-layout', pdfPath, '-'], { maxBuffer: 8 * 1024 * 1024 });
+      out.text = textRun.stdout;
+    } catch (error) {
+      out.textError = error.message;
+    }
+    try {
+      await execFileAsync('pdftoppm', ['-f', '1', '-singlefile', '-r', '72', pdfPath, rasterPrefix], { maxBuffer: 1024 * 1024 });
+      out.edge = ppmEdgeInk(await readFile(`${rasterPrefix}.ppm`));
+    } catch (error) {
+      out.edge = { error: error.message };
+    }
+    return out;
   }
 
   const setCsv = text => evaluate(`(() => {
@@ -368,7 +431,9 @@ try {
     await evaluate('window.scrollTo(0,0)');
     const pdf = await cmd('Page.printToPDF', { printBackground: true });
     const pdfBuf = Buffer.from(pdf.data, 'base64');
-    check('tap sheet prints to exactly one page', pdfPages(pdfBuf) === 1, `pages=${pdfPages(pdfBuf)}`);
+    const pdfInfo = await inspectPdf(pdfBuf, 'tap-sheet');
+    check('tap sheet prints to exactly one page', pdfInfo.pages === 1, `pages=${pdfInfo.pages}`);
+    check('tap sheet PDF has zero edge ink', pdfInfo.edge.ink === 0, JSON.stringify(pdfInfo.edge));
 
     await evaluate('window.scrollTo(0,0)');
     const mshot = await cmd('Page.captureScreenshot', { format: 'png' });
@@ -390,12 +455,16 @@ try {
       `document.querySelector('#results-caption')?.textContent.includes('${'A'.repeat(40)}') && document.querySelectorAll('#print-sheet .ps-table tbody tr').length === 10`));
     const stressPdfEn = Buffer.from((await cmd('Page.printToPDF', { printBackground: true })).data, 'base64');
     if (process.env.WW_AUDIT_DIR) await writeFile(join(process.env.WW_AUDIT_DIR, 'waterwatch-stress-en.pdf'), stressPdfEn);
-    check('100-character tap stress sheet prints one page in English', pdfPages(stressPdfEn) === 1, `pages=${pdfPages(stressPdfEn)}`);
+    const stressInfoEn = await inspectPdf(stressPdfEn, 'stress-en');
+    check('100-character tap stress sheet prints one page in English', stressInfoEn.pages === 1, `pages=${stressInfoEn.pages}`);
+    check('English stress PDF has zero edge ink', stressInfoEn.edge.ink === 0, JSON.stringify(stressInfoEn.edge));
     await click('#lab-lang-es');
     await waitFor(`document.querySelector('#diagnostic h3')?.getAttribute('lang') === 'es'`);
     const stressPdfEs = Buffer.from((await cmd('Page.printToPDF', { printBackground: true })).data, 'base64');
     if (process.env.WW_AUDIT_DIR) await writeFile(join(process.env.WW_AUDIT_DIR, 'waterwatch-stress-es.pdf'), stressPdfEs);
-    check('100-character tap stress sheet prints one page in Spanish', pdfPages(stressPdfEs) === 1, `pages=${pdfPages(stressPdfEs)}`);
+    const stressInfoEs = await inspectPdf(stressPdfEs, 'stress-es');
+    check('100-character tap stress sheet prints one page in Spanish', stressInfoEs.pages === 1, `pages=${stressInfoEs.pages}`);
+    check('Spanish stress PDF has zero edge ink', stressInfoEs.edge.ink === 0, JSON.stringify(stressInfoEs.edge));
     await click('#lab-lang-en');
 
 
@@ -433,6 +502,42 @@ try {
       await click('#lab-lang-en');
     }
 
+    // PFHxS at its quantitation level with every other mixture term blank is lone evidence, not a combined sum.
+    await setCsv('tap,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nPFAS lone reported,3,,,');
+    await click('#apply');
+    check('PFAS lone-reported sample applies', await waitFor(
+      `document.querySelector('#results-caption')?.textContent.includes('PFAS lone reported')`));
+    check('PFAS lone-reported English screen and print never claim combined terms', await evaluate(`(() => {
+      const panel = document.querySelector('#mixture-body')?.textContent ?? '';
+      const diag = document.querySelector('#diagnostic')?.textContent ?? '';
+      const print = document.querySelector('#print-sheet')?.textContent ?? '';
+      const all = [panel, diag, print].join(' ');
+      return panel.includes('single-compound screening sum')
+        && print.includes('single-compound screening sum')
+        && document.querySelector('#diagnostic [data-diag="pfas-mixture"]') === null
+        && !/combined screening|below-quantitation terms|señal de evaluación combinada|términos por debajo del nivel de cuantificación/i.test(all);
+    })()`));
+    await click('#lab-lang-es');
+    check('PFAS lone-reported Spanish screen and print never claim combined terms', await waitFor(`(() => {
+      const panel = document.querySelector('#mixture-body')?.textContent ?? '';
+      const diag = document.querySelector('#diagnostic')?.textContent ?? '';
+      const print = document.querySelector('#print-sheet')?.textContent ?? '';
+      const all = [panel, diag, print].join(' ');
+      return panel.includes('suma de evaluación de un solo compuesto')
+        && print.includes('suma de evaluación de un solo compuesto')
+        && document.querySelector('#diagnostic [data-diag="pfas-mixture"]') === null
+        && !/combined screening|below-quantitation terms|señal de evaluación combinada|términos por debajo del nivel de cuantificación/i.test(all);
+    })()`));
+    const lonePfasPdf = Buffer.from((await cmd('Page.printToPDF', { printBackground: true })).data, 'base64');
+    const lonePfasInfo = await inspectPdf(lonePfasPdf, 'pfas-lone-reported');
+    const lonePfasText = lonePfasInfo.text.replace(/\s+/g, ' ');
+    check('PFAS lone-reported bilingual PDF stays one page with zero edge ink', lonePfasInfo.pages === 1 && lonePfasInfo.edge.ink === 0,
+      `pages=${lonePfasInfo.pages} edge=${JSON.stringify(lonePfasInfo.edge)}`);
+    check('PFAS lone-reported PDF never says combined or below-quantitation contribution', !/combined screening|below-quantitation terms|señal de evaluación combinada|términos por debajo del nivel de cuantificación/i.test(lonePfasText)
+      && lonePfasText.includes('single-compound screening sum'),
+      lonePfasText.slice(0, 120));
+    await click('#lab-lang-en');
+
     // Paired lead regression: each pair keeps one interpretation on both draws in EN and ES.
     const pairCsv = `tap,lead_ppb,pair_id,draw_type
 Drop first,30,pair-drop,first-draw
@@ -464,6 +569,80 @@ Below flushed,6,pair-below,flushed`;
       }
       await click('#lab-lang-en');
     }
+
+    // Repeated flushed draws use one conservative pair reading on every row.
+    const repeatedPairCsv = `tap,lead_ppb,pair_id,draw_type
+Repeat first,30,pair-repeat,first-draw
+Repeat low flush,3,pair-repeat,flushed
+Repeat high flush,12,pair-repeat,flushed`;
+    await setCsv(repeatedPairCsv);
+    await click('#apply');
+    check('repeated-draw pair applies', await waitFor(`document.querySelectorAll('#tap-list li').length === 3`));
+    for (const lang of ['en', 'es']) {
+      await click(`#lab-lang-${lang}`);
+      const screenTexts = [];
+      const printTexts = [];
+      for (const row of [0, 1, 2]) {
+        await click(`#tap-list li:nth-of-type(${row + 1}) button`);
+        const screenText = await evaluate(`document.querySelector('#diagnostic [data-diag="lead-local-shared"]')?.textContent ?? ''`);
+        const printText = await evaluate(`document.querySelector('#print-sheet .ps-diag')?.textContent ?? ''`);
+        check(`repeated-draw pair row ${row + 1} uses the high flush in ${lang}`, screenText.includes(lang === 'es'
+          ? 'a 12 ppb en la extracción de purga en Repeat high flush'
+          : 'to 12 ppb in the flushed draw at Repeat high flush'), screenText.slice(0, 100));
+        check(`repeated-draw pair row ${row + 1} notes the repeated group in ${lang}`, screenText.includes(lang === 'es'
+          ? '1 fila de primera extracción y 2 filas de purga'
+          : '1 first-draw row and 2 flushed rows'));
+        check(`repeated-draw bilingual print row ${row + 1} matches`, printText.includes('to 12 ppb in the flushed draw at Repeat high flush')
+          && printText.includes('a 12 ppb en la extracción de purga en Repeat high flush')
+          && printText.includes('1 first-draw row and 2 flushed rows')
+          && printText.includes('1 fila de primera extracción y 2 filas de purga'));
+        screenTexts.push(screenText);
+        printTexts.push(printText);
+      }
+      check(`repeated-draw screen interpretation identical on all three rows in ${lang}`, screenTexts[0] === screenTexts[1] && screenTexts[0] === screenTexts[2] && screenTexts[0].length > 0);
+      check(`repeated-draw print interpretation identical on all three rows in ${lang}`, printTexts[0] === printTexts[1] && printTexts[0] === printTexts[2] && printTexts[0].length > 0);
+    }
+    await click('#lab-lang-en');
+
+    // Three urgent findings cannot push the paired-lead guidance off either draw's one-page PDF.
+    const crowdedCsv = `tap,advisory,ecoli,lead_ppb,nitrate_mg_l_as_n,pair_id,draw_type
+Crowded first,boil,present,30,20,crowded,first-draw
+Crowded flushed,boil,present,12,20,crowded,flushed`;
+    await setCsv(crowdedCsv);
+    await click('#apply');
+    check('crowded urgent paired-lead case applies', await waitFor(`document.querySelectorAll('#tap-list li').length === 2`));
+    for (const lang of ['en', 'es']) {
+      await click(`#lab-lang-${lang}`);
+      for (const row of [0, 1]) {
+        await click(`#tap-list li:nth-of-type(${row + 1}) button`);
+        check(`crowded case diagnostic order row ${row + 1} in ${lang}`, await evaluate(
+          `[...document.querySelectorAll('#diagnostic [data-diag]')].map(n => n.dataset.diag).join(',') === 'advisory,fecal,nitrate,lead-local-shared'`));
+        check(`crowded case print keeps three urgent findings plus compact pair note row ${row + 1} in ${lang}`, await evaluate(`(() => {
+          const diag = document.querySelector('#print-sheet .ps-diag')?.textContent ?? '';
+          const note = document.querySelector('#print-sheet .ps-pair-note')?.textContent ?? '';
+          return document.querySelectorAll('#print-sheet .ps-diag li').length === 3
+            && diag.includes('A reported advisory comes first')
+            && diag.includes('E. coli points to fecal contamination')
+            && diag.includes('Nitrate at or above the 10 mg/L as N MCL')
+            && !diag.includes('Lead points near the tap and beyond it')
+            && note.includes('Paired lead 30 -> 12 ppb: check fixture plus upstream/shared plumbing; resample.')
+            && note.includes('Plomo pareado 30 -> 12 ppb: revise grifo y plomería aguas arriba/compartida; repita.');
+        })()`));
+        const crowdedPdf = Buffer.from((await cmd('Page.printToPDF', { printBackground: true })).data, 'base64');
+        const crowdedInfo = await inspectPdf(crowdedPdf, `crowded-${lang}-row-${row + 1}`);
+        const crowdedText = crowdedInfo.text.replace(/\s+/g, ' ');
+        const pairLines = crowdedInfo.text.split('\n').filter(line => line.includes('Paired lead') || line.includes('Plomo pareado'));
+        check(`crowded paired-lead PDF row ${row + 1} in ${lang} stays one page with zero edge ink`, crowdedInfo.pages === 1 && crowdedInfo.edge.ink === 0,
+          `pages=${crowdedInfo.pages} edge=${JSON.stringify(crowdedInfo.edge)}`);
+        check(`crowded paired-lead PDF row ${row + 1} in ${lang} keeps urgent findings and both pair languages`, crowdedText.includes('A reported advisory comes first')
+          && crowdedText.includes('E. coli points to fecal contamination')
+          && crowdedText.includes('Nitrate at or above the 10 mg/L as N MCL')
+          && crowdedText.includes('Paired lead 30 -> 12 ppb')
+          && crowdedText.includes('Plomo pareado 30 -> 12 ppb'));
+        check(`crowded paired-lead note is one PDF line row ${row + 1} in ${lang}`, pairLines.length === 1, `lines=${pairLines.length}`);
+      }
+    }
+    await click('#lab-lang-en');
 
     // Spanish nitrate units in the measured table and highest-ratio readout.
     await setCsv('tap,advisory,ecoli,lead_ppb,copper_ppb,nitrate_mg_l_as_n,arsenic_ppb,pfoa_ppt,pfos_ppt,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nNitrate tap,none,absent,1,10,20,1,1,1,0,0,0,0');

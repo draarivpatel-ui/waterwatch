@@ -44,14 +44,16 @@ function atLeastOne(decimalText) {
 
 export function classifyPfasMixture(mix) {
   const terms = Array.isArray(mix?.terms) ? mix.terms : [];
+  const positiveTerms = terms.filter(term =>
+    term.quotient !== null && term.quotient !== undefined && Number(term.quotient) > 0);
   const quantifiedTerms = terms.filter(term =>
     term.quantified && term.quotient !== null && term.quotient !== undefined && Number(term.quotient) > 0);
   let kind = 'incomplete';
   if (mix?.raw !== null && mix?.raw !== undefined) {
     if (quantifiedTerms.length === 0) kind = 'below-quantitation';
     else if (quantifiedTerms.length >= 2) kind = 'multi-compound';
-    else if (atLeastOne(quantifiedTerms[0].quotient)) kind = 'single-compound';
-    else kind = 'combined';
+    else if (!atLeastOne(quantifiedTerms[0].quotient) && positiveTerms.length > 1) kind = 'combined';
+    else kind = 'single-compound';
   }
   const raw = mix?.raw ?? null;
   return Object.freeze({

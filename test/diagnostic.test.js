@@ -202,10 +202,34 @@ test('lead at the action level is treated like above without overstating it', ()
   assert.doesNotMatch(findings[0].title, /^Lead above/);
 });
 
-test('lead pairing picks the lowest paired draw', () => {
-  const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,30,pair1,first-draw\nB,20,pair1,flushed\nC,3,pair1,flushed`);
+test('lead pairing picks the highest paired draw of each type and notes repeats', () => {
+  const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,30,pair1,first-draw\nB,12,pair1,flushed\nC,3,pair1,flushed`);
   const findings = diagnose({ samples, screens, active: 0 });
-  assert.match(findings[0].evidence, /to 3 ppb in the flushed draw at C, 90% lower/);
+  assert.match(findings[0].evidence, /to 12 ppb in the flushed draw at B, 60% lower/);
+  assert.match(findings[0].evidence, /1 first-draw row and 2 flushed rows/);
+  assert.match(findings[0].evidence, /highest reported result for each draw type/);
+  assert.match(findings[0].evidenceEs, /1 fila de primera extracción y 2 filas de purga/);
+});
+
+test('30 first draw with 3 and 12 ppb repeated flushed rows gives one identical pair reading', () => {
+  const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,30,pair-repeat,first-draw\nB,3,pair-repeat,flushed\nC,12,pair-repeat,flushed`);
+  const leads = [0, 1, 2].map(active =>
+    diagnose({ samples, screens, active }).find(finding => finding.id.startsWith('lead-')));
+  assert.deepEqual(leads.map(finding => finding.id), ['lead-local-shared', 'lead-local-shared', 'lead-local-shared']);
+  for (const finding of leads) {
+    assert.match(finding.evidence, /to 12 ppb in the flushed draw at C, 60% lower/);
+    assert.match(finding.evidence, /1 first-draw row and 2 flushed rows/);
+    assert.match(finding.evidenceEs, /resultado más alto de cada tipo de extracción/);
+    assert.equal(finding.compactEn, 'Paired lead 30 -> 12 ppb: check fixture plus upstream/shared plumbing; resample.');
+    assert.equal(finding.compactEs, 'Plomo pareado 30 -> 12 ppb: revise grifo y plomería aguas arriba/compartida; repita.');
+  }
+  for (const key of ['title', 'titleEs', 'evidence', 'evidenceEs', 'action', 'actionEs', 'compactEn', 'compactEs']) {
+    assert.equal(leads[0][key], leads[1][key], `${key} first vs 3 ppb flush`);
+    assert.equal(leads[0][key], leads[2][key], `${key} first vs 12 ppb flush`);
+  }
+  assert.equal(screens[0].results.find(result => result.id === 'lead').status, 'above');
+  assert.equal(screens[1].results.find(result => result.id === 'lead').status, 'below');
+  assert.equal(screens[2].results.find(result => result.id === 'lead').status, 'above');
 });
 
 test('a 2 to 24 ppb pair reports the flushed rise and never claims near-tap plumbing', () => {
@@ -383,6 +407,17 @@ test('one quantified constituent below 1 plus below-quantitation terms is a comb
   assert.match(mixture.evidence, /combined screening signal \(one quantified constituent plus below-quantitation terms\)/);
   assert.doesNotMatch(`${mixture.title} ${mixture.evidence}`, /single-compound screening signal|drives the screening sum/i);
   assert.match(mixture.evidenceEs, /señal de evaluación combinada \(un constituyente cuantificado más términos por debajo del nivel de cuantificación\)/);
+});
+
+test('PFHxS 3 ppt with the other mixture terms unreported never claims combined terms', () => {
+  const { samples, screens } = load(`tap,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nT,3,,,`);
+  assert.equal(screens[0].mixture.raw, '0.3');
+  assert.equal(screens[0].mixture.quantified, 1);
+  assert.equal(screens[0].mixture.status, 'incomplete');
+  const findings = diagnose({ samples, screens, active: 0 });
+  assert.equal(findings.some(finding => finding.id === 'pfas-mixture'), false);
+  const text = findings.map(finding => `${finding.title} ${finding.evidence} ${finding.titleEs} ${finding.evidenceEs}`).join(' ');
+  assert.doesNotMatch(text, /combined screening signal|below-quantitation terms|señal de evaluación combinada/i);
 });
 
 test('two quantified mixture constituents make the EPA multi-constituent mixture explicit', () => {
