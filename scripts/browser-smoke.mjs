@@ -389,15 +389,97 @@ try {
     check('100-character stress report applies', await waitFor(
       `document.querySelector('#results-caption')?.textContent.includes('${'A'.repeat(40)}') && document.querySelectorAll('#print-sheet .ps-table tbody tr').length === 10`));
     const stressPdfEn = Buffer.from((await cmd('Page.printToPDF', { printBackground: true })).data, 'base64');
+    if (process.env.WW_AUDIT_DIR) await writeFile(join(process.env.WW_AUDIT_DIR, 'waterwatch-stress-en.pdf'), stressPdfEn);
     check('100-character tap stress sheet prints one page in English', pdfPages(stressPdfEn) === 1, `pages=${pdfPages(stressPdfEn)}`);
     await click('#lab-lang-es');
     await waitFor(`document.querySelector('#diagnostic h3')?.getAttribute('lang') === 'es'`);
     const stressPdfEs = Buffer.from((await cmd('Page.printToPDF', { printBackground: true })).data, 'base64');
+    if (process.env.WW_AUDIT_DIR) await writeFile(join(process.env.WW_AUDIT_DIR, 'waterwatch-stress-es.pdf'), stressPdfEs);
     check('100-character tap stress sheet prints one page in Spanish', pdfPages(stressPdfEs) === 1, `pages=${pdfPages(stressPdfEs)}`);
     await click('#lab-lang-en');
 
+
+    // PFAS classification regression: one shared class reaches panel, diagnostic, and print.
+    for (const item of [
+      {
+        name: 'below-quantitation', values: '2.99,3.99,4.99,0', raw: '1.197',
+        en: 'below-quantitation screening signal', es: 'señal de evaluación por debajo del nivel de cuantificación',
+      },
+      {
+        name: 'combined', values: '3.00,3.99,4.99,0', raw: '1.198',
+        en: 'combined screening signal (one quantified constituent plus below-quantitation terms)',
+        es: 'señal de evaluación combinada (un constituyente cuantificado más términos por debajo del nivel de cuantificación)',
+      },
+    ]) {
+      await setCsv(`tap,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nPFAS ${item.name},${item.values}`);
+      await click('#apply');
+      check(`PFAS ${item.name} sample applies`, await waitFor(
+        `document.querySelector('#results-caption')?.textContent.includes('PFAS ${item.name}')`));
+      check(`PFAS ${item.name} English panel card and print agree`, await evaluate(`(() => {
+        const panel = document.querySelector('#mixture-body')?.textContent ?? '';
+        const diag = document.querySelector('#diagnostic [data-diag="pfas-mixture"]')?.textContent ?? '';
+        const print = document.querySelector('#print-sheet .ps-math')?.textContent ?? '';
+        return panel.includes(${JSON.stringify(item.en)}) && diag.includes(${JSON.stringify(item.en)})
+          && print.includes(${JSON.stringify(item.en)}) && print.includes(${JSON.stringify(item.raw)});
+      })()`));
+      await click('#lab-lang-es');
+      check(`PFAS ${item.name} Spanish panel card and print agree`, await waitFor(`(() => {
+        const panel = document.querySelector('#mixture-body')?.textContent ?? '';
+        const diag = document.querySelector('#diagnostic [data-diag="pfas-mixture"]')?.textContent ?? '';
+        const print = document.querySelector('#print-sheet .ps-math')?.textContent ?? '';
+        return panel.includes(${JSON.stringify(item.es)}) && diag.includes(${JSON.stringify(item.es)})
+          && print.includes(${JSON.stringify(item.es)}) && !panel.includes('single-compound screening signal');
+      })()`));
+      await click('#lab-lang-en');
+    }
+
+    // Paired lead regression: each pair keeps one interpretation on both draws in EN and ES.
+    const pairCsv = `tap,lead_ppb,pair_id,draw_type
+Drop first,30,pair-drop,first-draw
+Drop flushed,12,pair-drop,flushed
+Rise first,2,pair-rise,first-draw
+Rise flushed,24,pair-rise,flushed
+Below first,10,pair-below,first-draw
+Below flushed,6,pair-below,flushed`;
+    await setCsv(pairCsv);
+    await click('#apply');
+    check('three paired-lead cases apply', await waitFor(`document.querySelectorAll('#tap-list li').length === 6`));
+    for (const spec of [
+      { rows: [0, 1], id: 'lead-local-shared', en: 'near the tap or fixture', es: 'plomería cercana al grifo o al accesorio', name: '30 to 12' },
+      { rows: [2, 3], id: 'lead-rises', en: 'flushed draw rose above the first draw', es: 'extracción de purga aumentó por encima de la primera extracción', name: '2 to 24' },
+      { rows: [4, 5], id: 'lead-drops-below', en: 'flushed sample dropped below the benchmark', es: 'muestra de purga bajó por debajo del nivel de referencia', name: '10 to 6' },
+    ]) {
+      for (const lang of ['en', 'es']) {
+        await click(`#lab-lang-${lang}`);
+        const texts = [];
+        for (const row of spec.rows) {
+          await click(`#tap-list li:nth-of-type(${row + 1}) button`);
+          const text = await evaluate(`document.querySelector('#diagnostic [data-diag="${spec.id}"]')?.textContent ?? ''`);
+          check(`${spec.name} pair present on row ${row + 1} in ${lang}`, text.includes(lang === 'es' ? spec.es : spec.en), text.slice(0, 90));
+          texts.push(text);
+          const print = await evaluate(`document.querySelector('#print-sheet .ps-diag')?.textContent ?? ''`);
+          check(`${spec.name} bilingual print agrees on row ${row + 1}`, print.includes(spec.en) && print.includes(spec.es));
+        }
+        check(`${spec.name} pair interpretation identical across draws in ${lang}`, texts[0] === texts[1] && texts[0].length > 0);
+      }
+      await click('#lab-lang-en');
+    }
+
+    // Spanish nitrate units in the measured table and highest-ratio readout.
+    await setCsv('tap,advisory,ecoli,lead_ppb,copper_ppb,nitrate_mg_l_as_n,arsenic_ppb,pfoa_ppt,pfos_ppt,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nNitrate tap,none,absent,1,10,20,1,1,1,0,0,0,0');
+    await click('#apply');
+    await click('#lab-lang-es');
+    check('Spanish nitrate units localize in measured table and highest-ratio readout', await waitFor(`(() => {
+      const table = document.querySelector('#results-table')?.textContent ?? '';
+      const readout = document.querySelector('#readout')?.textContent ?? '';
+      return table.includes('mg/L como N') && readout.includes('mg/L como N') && !table.includes('mg/L as N') && !readout.includes('mg/L as N') && !table.includes('mCL');
+    })()`));
+    check('Spanish mobile report link localizes', await evaluate(
+      `document.querySelector('#mobile-action a')?.textContent === 'Leer el informe del grifo'`));
+    await click('#lab-lang-en');
+
     // Sparse Spanish audit: exact statuses, EPA/WHO references, print tags, and chart shorthand.
-    const localeCsv = 'tap,advisory,ecoli,lead_ppb,copper_ppb,nitrate_mg_l_as_n,arsenic_ppb,pfoa_ppt,pfos_ppt,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nLocalization tap,none,absent,12,1300,10,5,,,2.99,3.99,4.99,0';
+    const localeCsv = 'tap,advisory,ecoli,lead_ppb,copper_ppb,nitrate_mg_l_as_n,arsenic_ppb,pfoa_ppt,pfos_ppt,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nLocalization tap,none,absent,12,1300,10,5,,,,3.99,,0';
     await setCsv(localeCsv);
     await click('#apply');
     check('localization audit sample applies', await waitFor(
@@ -420,6 +502,15 @@ try {
     })()`));
     check('Spanish screen and print preserve both provisional WHO tags', await evaluate(
       `[...document.querySelectorAll('#results-body .ref-who')].filter(node => node.textContent.includes('(provisional)')).length === 2 && (document.querySelector('#print-sheet .ps-table').textContent.match(/\(provisional\)/g) ?? []).length === 4`));
+    check('Spanish table keeps MCL capitalized and nitrate units localized on screen', await evaluate(`(() => {
+      const table = document.querySelector('#results-table')?.textContent ?? '';
+      return table.includes('MCL') && !table.includes('mCL') && table.includes('mg/L como N') && !table.includes('mg/L as N');
+    })()`));
+    check('bilingual print localizes ratio shorthand and nitrate units', await evaluate(`(() => {
+      const print = document.querySelector('#print-sheet')?.textContent ?? '';
+      const math = document.querySelector('#print-sheet .ps-math')?.textContent ?? '';
+      return print.includes('Ratio / Relación') && print.includes('mg/L as N / mg/L como N') && math.includes('n/r / n/d');
+    })()`));
     check('Spanish lab charts replace HI and n/r shorthand', await evaluate(`(() => {
       const charts = [...document.querySelectorAll('.lab-chart')].map(node => node.textContent).join(' ');
       const lab = document.querySelector('#lab-body')?.textContent ?? '';

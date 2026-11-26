@@ -105,7 +105,7 @@ test('audit includes a lossless row for every screened item, including exact and
   assert.ok(lines[1].startsWith(`"'=1+2","boil","present","co-occurrence","Lead"`));
   assert.match(csv, /"PFOA","4.001","ppt","4.0","MCL","above","4.0","at"/);
   assert.match(csv, /"Lead \(legacy\)","10.001","ppb","15","legacy action level","below"/);
-  assert.match(csv, /"PFAS mixture Hazard Index","1.1","unitless","1","2024 rule screening context","above","1","at"/);
+  assert.match(csv, /"PFAS multi-compound mixture signal","1.1","unitless","1","2024 rule screening context","above","1","at"/);
   assert.match(csv, /not a compliance or potability determination/i);
 });
 
@@ -113,13 +113,17 @@ test('audit CSV labels below-quantitation, single-compound, and true mixture sum
   const below = auditCsv([{ tap: 'Below PQL', advisory: 'none', ecoli: 'absent',
     values: { pfhxs: '2.99', pfna: '3.99', genx: '4.99', pfbs: '0' } }]);
   assert.match(below, /"PFAS below-quantitation screening sum","1\.197","unitless","1"/);
-  assert.doesNotMatch(below, /"PFAS mixture Hazard Index","1\.197"/);
+  assert.doesNotMatch(below, /"PFAS multi-compound mixture signal","1\.197"/);
   const single = auditCsv([{ tap: 'PFBS only', advisory: 'none', ecoli: 'absent',
     values: { pfhxs: '0', pfna: '0', genx: '0', pfbs: '5000' } }]);
   assert.match(single, /"PFAS single-compound screening signal","2\.5","unitless","1"/);
-  assert.doesNotMatch(single, /"PFAS mixture Hazard Index","2\.5"/);
+  assert.doesNotMatch(single, /"PFAS multi-compound mixture signal","2\.5"/);
   const mixture = auditCsv([sample()]);
-  assert.match(mixture, /"PFAS mixture Hazard Index","1\.1","unitless","1"/);
+  assert.match(mixture, /"PFAS multi-compound mixture signal","1\.1","unitless","1"/);
+  const combined = auditCsv([{ tap: 'Combined terms', advisory: 'none', ecoli: 'absent',
+    values: { pfhxs: '3.00', pfna: '3.99', genx: '4.99', pfbs: '0' } }]);
+  assert.match(combined, /"PFAS combined screening signal","1\.198","unitless","1"/);
+  assert.doesNotMatch(combined, /single-compound|below-quantitation screening sum","1\.198/);
 });
 
 test('fingerprint is SHA-256 of canonical payload UTF-8 bytes and preserves exact data', async () => {

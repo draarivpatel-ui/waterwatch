@@ -8,6 +8,7 @@ import { shortcutAction } from './shortcuts.js';
 import {
   WHO_GUIDELINES, whoStatus, diagnose, benchmarkRatio, summarizeScenario,
 } from './diagnostic.js';
+import { classifyPfasMixture } from './pfas-signal.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const $ = id => document.getElementById(id);
@@ -385,14 +386,21 @@ function ratioText(ratio) {
   return `${String(Number(ratio.toPrecision(3)))}\u00d7`;
 }
 
+function displayUnit(id, unit, lang = state.lang, bilingual = false) {
+  if (id === 'nitrate' && unit === 'mg/L as N') {
+    if (bilingual) return 'mg/L as N / mg/L como N';
+    return lang === 'es' ? 'mg/L como N' : unit;
+  }
+  return unit;
+}
+
 const WHO_WORD = { above: 'above', at: 'at', below: 'below' };
 
 function epaReference(id) {
   const es = state.lang === 'es';
   if (id === 'pfbs') return es ? 'Sin nivel individual de la EPA' : 'No individual EPA benchmark';
   if (!es) return `EPA ${REFERENCE_TEXT[id]}`;
-  const text = REFERENCE_TEXT_ES[id];
-  return `EPA, ${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+  return `EPA, ${REFERENCE_TEXT_ES[id]}`;
 }
 
 function renderTable(sample, screen) {
@@ -426,11 +434,12 @@ function renderTable(sample, screen) {
   for (const result of screen.results) {
     const [icon, cls, words] = STATUS_UI[result.status];
     const word = words[state.lang] ?? words.en;
+    const measuredUnit = displayUnit(result.id, result.unit, state.lang);
     const measured = result.value === null
       ? el('span', { class: 'not-reported', text: copy.notReported })
       : el('span', {}, [
         document.createTextNode(result.value),
-        el('span', { class: 'unit', text: result.unit }),
+        el('span', { class: 'unit', text: measuredUnit }),
       ]);
     const finding = el('span', { class: `finding ${cls}` }, [
       mark(icon),
@@ -439,8 +448,8 @@ function renderTable(sample, screen) {
         result.rounded ? el('span', {
           class: 'context',
           text: es
-            ? `Redondeo de la regla ${result.rounded} ${result.unit} (${roundingWords[result.roundedStatus] ?? result.roundedStatus})`
-            : `Rule rounding ${result.rounded} ${result.unit} (${result.roundedStatus})`,
+            ? `Redondeo de la regla ${result.rounded} ${measuredUnit} (${roundingWords[result.roundedStatus] ?? result.roundedStatus})`
+            : `Rule rounding ${result.rounded} ${measuredUnit} (${result.roundedStatus})`,
         }) : null,
         result.status === 'no-limit' ? el('span', {
           class: 'context',
@@ -532,7 +541,7 @@ function renderReadout(view) {
   const top = rated.reduce((best, item) => (best === null || item.ratio > best.ratio ? item : best), null);
   box.append(top
     ? readoutCell(copy.highest, ratioText(top.ratio), top.result.status,
-      `${es ? CHEM_ES[top.result.id] ?? top.result.label : top.result.label} ${top.result.value} \u00f7 ${top.result.limit} ${top.result.unit}`)
+      `${es ? CHEM_ES[top.result.id] ?? top.result.label : top.result.label} ${top.result.value} \u00f7 ${top.result.limit} ${displayUnit(top.result.id, top.result.unit, state.lang)}`)
     : readoutCell(copy.highest, copy.shortMissing, 'missing', copy.noBenchmark));
   const hi = screen.mixture;
   box.append(readoutCell(copy.pfas, hi.raw ?? copy.shortMissing, HI_TONE[hi.status],
@@ -661,70 +670,123 @@ function renderMobileAction(view) {
     el('span', { class: 'mobile-action-tap', text: view.sample.tap }),
     el('strong', { lang: state.lang, text: copy.title }),
     el('p', { lang: state.lang, text: urgent ? `${copy.body.split('. ')[0]}.` : copy.body }),
-    el('a', { href: '#report', text: 'Read the tap report' }),
+    el('a', { href: '#report', lang: state.lang, text: state.lang === 'es' ? 'Leer el informe del grifo' : 'Read the tap report' }),
   );
 }
 
 /* ---------- mixture ---------- */
 
+function mixtureClassificationSentence(classification, es) {
+  const signal = es ? classification.text.es : classification.text.en;
+  if (classification.kind === 'multi-compound') {
+    return es
+      ? `Esta es una ${signal} según el nivel de mezcla multiconstituyente de la EPA.`
+      : `This is a ${signal} under EPA's multi-constituent mixture benchmark.`;
+  }
+  if (classification.kind === 'below-quantitation') {
+    return es
+      ? `Esta es solo una ${signal}, no la mezcla multiconstituyente del Índice de Peligro de la EPA.`
+      : `This is a ${signal} only, not EPA's multi-constituent Hazard Index mixture.`;
+  }
+  return es
+    ? `Esta es una ${signal}, no la mezcla multiconstituyente del Índice de Peligro de la EPA.`
+    : `This is a ${signal}, not EPA's multi-constituent Hazard Index mixture.`;
+}
+
 function renderMixture() {
   const body = $('mixture-body');
   body.replaceChildren();
+  body.setAttribute('lang', state.lang);
+  const es = state.lang === 'es';
+  const copy = es
+    ? {
+      load: 'Cargue una muestra válida para ver el Índice de Peligro.',
+      notReported: 'sin reportar',
+      notApplicable: 'Menos de dos constituyentes están en sus niveles prácticos de cuantificación o por encima de ellos, así que el nivel de mezcla multiconstituyente de la EPA no aplica.',
+      noMeasurements: 'No se reportaron mediciones de la mezcla; el índice está incompleto.',
+      incomplete: raw => `La suma parcial es ${raw}; los constituyentes sin reportar mantienen incompleto el índice.`,
+      partialAbove: raw => `La suma parcial de evaluación ${raw} ya está por encima de 1.`,
+      sumAbove: raw => `La suma de evaluación ${raw} está por encima de 1.`,
+      hazardStatus: (raw, word) => `El Índice de Peligro ${raw} está ${word} del nivel 1.`,
+      sumType: noun => `La clasificación de la suma reportada es ${noun}.`,
+      unreported: names => `Constituyentes sin reportar: ${names}.`,
+      note: 'El índice cubre PFHxS, PFNA, GenX (HFPO-DA) y PFBS. La mezcla multiconstituyente de la EPA aplica solo cuando al menos dos están en sus niveles prácticos de cuantificación o por encima de ellos; esta evaluación aún señala cualquier suma exacta por encima de 1 como una señal de evaluación. PFBS solo no es un MCL.',
+      rounding: (rounded, statusText) => ` El redondeo de la regla muestra ${rounded} (${statusText}); esta evaluación usa la suma sin redondear.`,
+      statusWords: { above: 'por encima', at: 'en el nivel', below: 'por debajo' },
+    }
+    : {
+      load: 'Load a valid sample to see the Hazard Index.',
+      notReported: 'not reported',
+      notApplicable: 'Fewer than two constituents are at or above their practical quantitation levels, so the EPA multi-constituent mixture benchmark does not apply.',
+      noMeasurements: 'No mixture measurements reported; the index is incomplete.',
+      incomplete: raw => `Partial sum ${raw}; unreported constituents keep the index incomplete.`,
+      partialAbove: raw => `Partial screening sum ${raw} is already above 1.`,
+      sumAbove: raw => `Screening sum ${raw} is above 1.`,
+      hazardStatus: (raw, word) => `Hazard Index ${raw} is ${word} the benchmark of 1.`,
+      sumType: noun => `The reported sum classification is ${noun}.`,
+      unreported: names => `Unreported constituents: ${names}.`,
+      note: 'The index covers PFHxS, PFNA, GenX (HFPO-DA), and PFBS. EPA\'s multi-constituent mixture applies only when at least two are at or above their practical quantitation levels; this screen still flags any exact summed index above 1 as a screening signal. PFBS alone is not an MCL.',
+      rounding: (rounded, statusText) => ` Rule rounding shows ${rounded} (${statusText}); this screen uses the unrounded sum.`,
+      statusWords: { above: 'above', at: 'at', below: 'below' },
+    };
   const view = current();
   if (!view) {
-    body.append(el('p', { class: 'disabled-note', text: 'Load a valid sample to see the Hazard Index.' }));
+    body.append(el('p', { class: 'disabled-note', lang: state.lang, text: copy.load }));
     return;
   }
   const hi = view.screen.mixture;
+  const classification = classifyPfasMixture(hi);
   const names = { pfhxs: 'PFHxS', pfna: 'PFNA', genx: 'GenX', pfbs: 'PFBS' };
   const terms = el('div', { class: 'hi-terms' });
   hi.terms.forEach((term, index) => {
     if (index > 0) terms.append(el('span', { text: '+' }));
     terms.append(el('span', { class: term.quotient === null ? 'term-missing' : '' }, [
       document.createTextNode(`${names[term.id]}/${term.denominator}`),
-      document.createTextNode(term.quotient === null ? ' not reported' : ` = ${term.quotient}`),
+      document.createTextNode(term.quotient === null ? ` ${copy.notReported}` : ` = ${term.quotient}`),
     ]));
   });
   body.append(terms);
 
-  const status = el('p', { class: 'hi-total' });
+  const status = el('p', { class: 'hi-total', lang: state.lang });
   const markFor = s => mark(s === 'above' || s === 'above-lower-bound' ? 'mark-above' : s === 'at' ? 'mark-at' : 'mark-below');
+  const noun = es ? classification.text.esNoun : classification.text.enNoun;
   if (hi.status === 'not-applicable') {
-    status.append(mark('mark-scope'), document.createTextNode(' Fewer than two constituents are at or above their practical quantitation levels, so the EPA multi-constituent mixture benchmark does not apply.'));
+    status.append(mark('mark-scope'), document.createTextNode(` ${copy.notApplicable}${hi.raw === null ? '' : ` ${copy.sumType(noun)}`}`));
     status.classList.add('status-neutral');
   } else if (hi.status === 'incomplete') {
     status.append(mark('mark-missing'), document.createTextNode(hi.raw === null
-      ? ' No mixture measurements reported; the index is incomplete.'
-      : ` Partial sum ${hi.raw}; unreported constituents keep the index incomplete.`));
+      ? ` ${copy.noMeasurements}`
+      : ` ${copy.incomplete(hi.raw)} ${copy.sumType(noun)}`));
     status.classList.add('status-neutral');
   } else if (hi.status === 'above-lower-bound') {
-    status.append(markFor(hi.status), document.createTextNode(hi.epaMixture
-      ? ` Partial sum ${hi.raw} is already above 1 for the quantified multi-constituent mixture, and constituents are still unreported.`
-      : ` Partial screening sum ${hi.raw} is already above 1, but fewer than two constituents are quantified, so this is not the EPA multi-constituent mixture.`));
+    status.append(markFor(hi.status), document.createTextNode(` ${copy.partialAbove(hi.raw)} ${mixtureClassificationSentence(classification, es)}`));
+    status.classList.add('status-above');
+  } else if (hi.status === 'above') {
+    status.append(markFor(hi.status), document.createTextNode(` ${copy.sumAbove(hi.raw)} ${mixtureClassificationSentence(classification, es)}`));
     status.classList.add('status-above');
   } else {
-    const singleScreen = hi.status === 'above' && !hi.epaMixture;
-    status.append(markFor(hi.status), document.createTextNode(singleScreen
-      ? ` Screening sum ${hi.raw} is above 1. Fewer than two constituents are at or above their practical quantitation levels, so this is a single-compound screening signal, not the EPA multi-constituent mixture.`
-      : ` Hazard Index ${hi.raw} is ${hi.status} the benchmark of 1.`));
+    status.append(markFor(hi.status), document.createTextNode(` ${copy.hazardStatus(hi.raw, copy.statusWords[hi.status] ?? hi.status)} ${copy.sumType(noun)}`));
     status.classList.add(`status-${hi.status}`);
-    if (hi.rounded) {
-      status.append(el('span', {
-        class: 'context',
-        text: ` Rule rounding shows ${hi.rounded} (${hi.roundedStatus}); this screen uses the unrounded sum.`,
-      }));
-    }
+  }
+  if (hi.rounded) {
+    status.append(el('span', {
+      class: 'context',
+      lang: state.lang,
+      text: copy.rounding(hi.rounded, copy.statusWords[hi.roundedStatus] ?? hi.roundedStatus),
+    }));
   }
   body.append(status);
   if (hi.missing.length) {
     body.append(el('p', {
       class: 'notes',
-      text: `Unreported constituents: ${hi.missing.map(id => names[id]).join(', ')}.`,
+      lang: state.lang,
+      text: copy.unreported(hi.missing.map(id => names[id]).join(', ')),
     }));
   }
   body.append(el('p', {
     class: 'notes',
-    text: 'The index covers PFHxS, PFNA, GenX (HFPO-DA), and PFBS. EPA\'s multi-constituent mixture applies only when at least two are at or above their practical quantitation levels; this screen still flags any exact summed index above 1 as a screening signal. PFBS alone is not an MCL.',
+    lang: state.lang,
+    text: copy.note,
   }));
 }
 
@@ -1199,7 +1261,7 @@ function renderPrintSheet(view) {
     el('th', { scope: 'col', text: 'Contaminant / Contaminante' }),
     el('th', { scope: 'col', class: 'num', text: 'Measured / Medido' }),
     el('th', { scope: 'col', text: 'EPA benchmark / Referencia EPA' }),
-    el('th', { scope: 'col', class: 'num', text: 'Ratio' }),
+    el('th', { scope: 'col', class: 'num', text: 'Ratio / Relación' }),
     el('th', { scope: 'col', text: 'Status / Estado' }),
     el('th', { scope: 'col', text: 'WHO / OMS' }),
   ])), tbody);
@@ -1215,7 +1277,7 @@ function renderPrintSheet(view) {
       : 'no value / sin valor';
     tbody.append(el('tr', { class: ['above', 'at'].includes(r.status) ? 'ps-flag' : '' }, [
       el('td', { text: `${r.label} / ${CHEM_ES[r.id]}` }),
-      el('td', { class: 'num', text: r.value === null ? 'n/r' : `${r.value} ${r.unit}` }),
+      el('td', { class: 'num', text: r.value === null ? 'n/r / n/d' : `${r.value} ${displayUnit(r.id, r.unit, 'en', true)}` }),
       el('td', { text: epaText }),
       el('td', { class: 'num', text: ratio === null ? '' : ratioText(ratio) }),
       el('td', { text: STATUS_BI[r.status] ?? r.status }),
@@ -1224,13 +1286,14 @@ function renderPrintSheet(view) {
   }
   const hi = screen.mixture;
   const names = { pfhxs: 'PFHxS', pfna: 'PFNA', genx: 'GenX', pfbs: 'PFBS' };
-  const hiKind = hi.epaMixture
-    ? 'multi-constituent mixture / mezcla multiconstituyente'
-    : 'screening sum / suma de evaluación';
+  const hiClassification = classifyPfasMixture(hi);
+  const hiSignaling = ['above', 'above-lower-bound'].includes(hi.status);
+  const hiKind = `${hiSignaling ? hiClassification.text.en : hiClassification.text.enNoun} / ${hiSignaling ? hiClassification.text.es : hiClassification.text.esNoun}`;
   const hiPartial = hi.partial ? '; partial lower bound / cota inferior parcial' : '';
+  const missingBi = 'n/r / n/d';
   sheet.append(biHeading('h2', 'Readings', 'Lecturas'), table, el('p', {
     class: 'ps-math',
-    text: `PFAS Hazard Index / Índice de Peligro de PFAS = ${hi.terms.map(term => `${names[term.id]}/${term.denominator}`).join(' + ')} = ${hi.terms.map(term => term.quotient ?? 'n/r').join(' + ')} = ${hi.raw ?? 'n/r'} (${HI_STATUS_BI[hi.status] ?? hi.status}; ${hiKind}${hiPartial}; benchmark 1 / nivel 1)`,
+    text: `PFAS Hazard Index / Índice de Peligro de PFAS = ${hi.terms.map(term => `${names[term.id]}/${term.denominator}`).join(' + ')} = ${hi.terms.map(term => term.quotient ?? missingBi).join(' + ')} = ${hi.raw ?? missingBi} (${HI_STATUS_BI[hi.status] ?? hi.status}; ${hiKind}${hiPartial}; benchmark 1 / nivel 1)`,
   }));
 
   sheet.append(el('section', { class: 'ps-diagnostic-section' }, [
@@ -1314,6 +1377,7 @@ function setupLab() {
         state.lang = lang;
         renderReport();
         renderMobileAction(current());
+        renderMixture();
       },
     });
     section.hidden = false;

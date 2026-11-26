@@ -93,14 +93,15 @@ test('school first draw points lead to plumbing near the tap with the flushed pa
   const { samples, screens } = preset('school');
   const findings = diagnose({ samples, screens, active: 0 });
   assert.deepEqual(ids(findings), ['lead-local']);
-  assert.match(findings[0].evidence, /24\.6 ppb in this first-draw row but 3\.1 ppb in its paired flushed row at East hall fountain \(flushed\), 87% lower/);
+  assert.match(findings[0].evidence, /Lead falls from 24\.6 ppb in the first draw at East hall fountain \(first draw\) to 3\.1 ppb in the flushed draw at East hall fountain \(flushed\), 87% lower/);
   assert.equal(findings[0].cite, SOURCE_HINTS.lead);
 });
 
-test('school flushed and kitchen taps show no contamination pattern', () => {
+test('school flushed draw keeps the same pair finding while the kitchen tap stays clear', () => {
   const { samples, screens } = preset('school');
-  assert.deepEqual(ids(diagnose({ samples, screens, active: 1 })), ['clear']);
+  assert.deepEqual(ids(diagnose({ samples, screens, active: 1 })), ['lead-local']);
   assert.deepEqual(ids(diagnose({ samples, screens, active: 2 })), ['clear']);
+  assert.equal(diagnose({ samples, screens, active: 0 })[0].evidence, diagnose({ samples, screens, active: 1 })[0].evidence);
 });
 
 test('industrial corridor flags the PFAS mixture with no single exceedance', () => {
@@ -168,7 +169,7 @@ test('explicit paired metadata high in both draws supports a shared pattern', ()
   const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,20,pair1,first-draw\nB,15,pair1,flushed`);
   const findings = diagnose({ samples, screens, active: 0 });
   assert.deepEqual(ids(findings), ['lead-shared']);
-  assert.match(findings[0].evidence, /paired flushed row, B, still reads 15 ppb/);
+  assert.match(findings[0].evidence, /first draw at A and 15 ppb in the flushed draw at B/);
 });
 
 test('a single lead tap asks for a first-draw and flushed pair', () => {
@@ -184,11 +185,13 @@ test('lead pairing ignores taps with unreported lead', () => {
   assert.deepEqual(ids(diagnose({ samples, screens, active: 0 })), ['lead-unpaired']);
 });
 
-test('lead at exactly half of this tap counts as local plumbing only with pair metadata', () => {
+test('lead at exactly half with the flushed draw still at the benchmark combines local and shared hints', () => {
   const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,20,pair1,first-draw\nB,10,pair1,flushed`);
   const findings = diagnose({ samples, screens, active: 0 });
-  assert.deepEqual(ids(findings), ['lead-local']);
+  assert.deepEqual(ids(findings), ['lead-local-shared']);
   assert.match(findings[0].evidence, /50% lower/);
+  assert.match(findings[0].evidence, /near the tap or fixture/);
+  assert.match(findings[0].evidence, /upstream or shared plumbing or corrosive water/);
 });
 
 test('lead at the action level is treated like above without overstating it', () => {
@@ -202,7 +205,7 @@ test('lead at the action level is treated like above without overstating it', ()
 test('lead pairing picks the lowest paired draw', () => {
   const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,30,pair1,first-draw\nB,20,pair1,flushed\nC,3,pair1,flushed`);
   const findings = diagnose({ samples, screens, active: 0 });
-  assert.match(findings[0].evidence, /3 ppb in its paired flushed row at C, 90% lower/);
+  assert.match(findings[0].evidence, /to 3 ppb in the flushed draw at C, 90% lower/);
 });
 
 test('a 2 to 24 ppb pair reports the flushed rise and never claims near-tap plumbing', () => {
@@ -224,10 +227,52 @@ test('a 10 to 6 ppb pair reports that the flushed sample dropped below the bench
   const findings = diagnose({ samples, screens, active: 0 });
   const lead = findings.find(finding => finding.id.startsWith('lead-'));
   assert.equal(lead.id, 'lead-drops-below');
-  assert.match(lead.evidence, /first draw, at or above the 10 ppb benchmark/);
+  assert.match(lead.evidence, /first draw at A, at or above the 10 ppb benchmark/);
   assert.match(lead.evidence, /flushed sample dropped below the benchmark/);
   assert.doesNotMatch(`${lead.title} ${lead.evidence}`, /stays high|shared plumbing|near this tap/i);
   assert.match(lead.evidenceEs, /muestra de purga bajó por debajo del nivel de referencia/);
+});
+
+
+test('a 30 to 12 ppb pair gives the same combined local and upstream interpretation on both draws', () => {
+  const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,30,pair1,first-draw\nB,12,pair1,flushed`);
+  const first = diagnose({ samples, screens, active: 0 }).find(finding => finding.id.startsWith('lead-'));
+  const flushed = diagnose({ samples, screens, active: 1 }).find(finding => finding.id.startsWith('lead-'));
+  for (const lead of [first, flushed]) {
+    assert.equal(lead.id, 'lead-local-shared');
+    assert.match(lead.evidence, /large drop points strongly to plumbing near the tap or fixture/);
+    assert.match(lead.evidence, /flushed draw remains at or above 10 ppb/);
+    assert.match(lead.evidence, /upstream or shared plumbing or corrosive water/);
+    assert.doesNotMatch(`${lead.title} ${lead.evidence}`, /one fixture is unlikely/);
+    assert.match(lead.evidenceEs, /plomería cercana al grifo o al accesorio/);
+    assert.match(lead.evidenceEs, /plomería aguas arriba o compartida o el agua corrosiva/);
+  }
+  for (const key of ['title', 'titleEs', 'evidence', 'evidenceEs', 'action', 'actionEs']) assert.equal(first[key], flushed[key]);
+  assert.equal(screens[0].results.find(result => result.id === 'lead').status, 'above');
+  assert.equal(screens[1].results.find(result => result.id === 'lead').status, 'above');
+});
+
+test('a 2 to 24 ppb pair keeps the same rise finding when the low first draw is selected', () => {
+  const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,2,pair1,first-draw\nB,24,pair1,flushed`);
+  const first = diagnose({ samples, screens, active: 0 }).find(finding => finding.id.startsWith('lead-'));
+  const flushed = diagnose({ samples, screens, active: 1 }).find(finding => finding.id.startsWith('lead-'));
+  assert.equal(first?.id, 'lead-rises');
+  assert.equal(flushed?.id, 'lead-rises');
+  for (const key of ['title', 'titleEs', 'evidence', 'evidenceEs', 'action', 'actionEs']) assert.equal(first[key], flushed[key]);
+  assert.equal(screens[0].results.find(result => result.id === 'lead').status, 'below');
+  assert.equal(screens[1].results.find(result => result.id === 'lead').status, 'above');
+});
+
+test('a 10 to 6 ppb pair keeps the same drop-below finding on both draws', () => {
+  const { samples, screens } = load(`tap,lead_ppb,pair_id,draw_type\nA,10,pair1,first-draw\nB,6,pair1,flushed`);
+  const first = diagnose({ samples, screens, active: 0 }).find(finding => finding.id.startsWith('lead-'));
+  const flushed = diagnose({ samples, screens, active: 1 }).find(finding => finding.id.startsWith('lead-'));
+  assert.equal(first?.id, 'lead-drops-below');
+  assert.equal(flushed?.id, 'lead-drops-below');
+  for (const key of ['title', 'titleEs', 'evidence', 'evidenceEs', 'action', 'actionEs']) assert.equal(first[key], flushed[key]);
+  assert.match(first.evidenceEs, /muestra de purga bajó por debajo del nivel de referencia/);
+  assert.equal(screens[0].results.find(result => result.id === 'lead').status, 'at');
+  assert.equal(screens[1].results.find(result => result.id === 'lead').status, 'below');
 });
 
 /* ---------- other contaminants ---------- */
@@ -324,6 +369,20 @@ test('zero quantified PFAS constituents never invent a quantified driver for the
   assert.doesNotMatch(`${mixture.title} ${mixture.evidence}`, /only mixture constituent|PFHxS is the only|single-compound screening signal/i);
   assert.match(mixture.evidenceEs, /Ninguno de los constituyentes reportados de la mezcla alcanzó sus niveles prácticos de cuantificación de la EPA/);
   assert.match(mixture.evidenceEs, /solo una señal de evaluación por debajo del nivel de cuantificación/);
+});
+
+test('one quantified constituent below 1 plus below-quantitation terms is a combined signal', () => {
+  const { samples, screens } = load(`tap,pfhxs_ppt,pfna_ppt,genx_ppt,pfbs_ppt\nT,3.00,3.99,4.99,0`);
+  assert.equal(screens[0].mixture.raw, '1.198');
+  assert.equal(screens[0].mixture.quantified, 1);
+  const findings = diagnose({ samples, screens, active: 0 });
+  assert.deepEqual(ids(findings), ['pfas-mixture']);
+  const mixture = findings[0];
+  assert.match(mixture.title, /Combined PFAS terms/);
+  assert.match(mixture.evidence, /own quotient is 0\.3, below 1/);
+  assert.match(mixture.evidence, /combined screening signal \(one quantified constituent plus below-quantitation terms\)/);
+  assert.doesNotMatch(`${mixture.title} ${mixture.evidence}`, /single-compound screening signal|drives the screening sum/i);
+  assert.match(mixture.evidenceEs, /señal de evaluación combinada \(un constituyente cuantificado más términos por debajo del nivel de cuantificación\)/);
 });
 
 test('two quantified mixture constituents make the EPA multi-constituent mixture explicit', () => {

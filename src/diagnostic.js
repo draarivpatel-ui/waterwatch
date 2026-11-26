@@ -5,6 +5,8 @@
 // WHO values follow the Guidelines for drinking-water quality, fourth
 // edition incorporating the first, second and third addenda (2026).
 
+import { classifyPfasMixture } from './pfas-signal.js';
+
 const SCALE = 16;
 const decimal = /^[0-9]{1,9}(?:\.[0-9]{1,12})?$/;
 
@@ -116,23 +118,104 @@ function resultFor(screen, id) {
   return screen.results.find(result => result.id === id);
 }
 
-function pairedLeadRows(samples, sample, active) {
-  if (!sample.pairId || !PAIR_DRAWS.has(sample.drawType)) return [];
-  return samples
-    .map((other, index) => ({ other, index }))
-    .filter(({ other, index }) => index !== active
-      && other.pairId === sample.pairId
-      && PAIR_DRAWS.has(other.drawType)
-      && other.drawType !== sample.drawType
-      && other.values?.lead != null);
+function leadPairContext(samples, sample, active) {
+  if (!sample.pairId || !PAIR_DRAWS.has(sample.drawType) || sample.values?.lead == null) return null;
+  const companions = samples
+    .map((other, index) => ({ row: other, index }))
+    .filter(({ row, index }) => index !== active
+      && row.pairId === sample.pairId
+      && PAIR_DRAWS.has(row.drawType)
+      && row.values?.lead != null);
+  const choose = drawType => {
+    if (sample.drawType === drawType) return { row: sample, index: active };
+    const matches = companions.filter(({ row }) => row.drawType === drawType);
+    if (!matches.length) return null;
+    return matches.reduce((best, item) =>
+      (Number(item.row.values.lead) < Number(best.row.values.lead) ? item : best));
+  };
+  const first = choose('first-draw');
+  const flushed = choose('flushed');
+  return first && flushed ? { first, flushed } : null;
 }
 
 function leadAtOrAbove(value) {
   return units(String(value)) >= units('10');
 }
 
+function leadPairFinding(pair) {
+  const firstText = pair.first.row.values.lead;
+  const flushedText = pair.flushed.row.values.lead;
+  const firstValue = Number(firstText);
+  const flushedValue = Number(flushedText);
+  const firstAt = leadAtOrAbove(firstText);
+  const flushedAt = leadAtOrAbove(flushedText);
+  if (!firstAt && !flushedAt) return null;
+  const share = firstValue > 0 ? flushedValue / firstValue : 1;
+  const dropPercent = Math.round((1 - share) * 100);
+  const sharePercent = Math.round(share * 100);
+  const firstTap = pair.first.row.tap;
+  const flushedTap = pair.flushed.row.tap;
+  if (flushedValue > firstValue) {
+    return {
+      id: 'lead-rises', tone: 'caution',
+      title: 'Lead rises in the flushed draw',
+      titleEs: 'El plomo aumenta en la extracción de purga',
+      evidence: `Lead is ${flushedText} ppb in the flushed draw at ${flushedTap} after ${firstText} ppb in the first draw at ${firstTap}. The flushed draw rose above the first draw, pointing away from fixture-only stagnation and toward upstream supply or the service line.`,
+      evidenceEs: `El plomo es ${esDecimal(flushedText)} ppb en la extracción de purga en ${flushedTap} después de ${esDecimal(firstText)} ppb en la primera extracción en ${firstTap}. La extracción de purga aumentó por encima de la primera extracción, lo que no concuerda con un estancamiento limitado al grifo y apunta al suministro aguas arriba o la línea de servicio.`,
+      action: 'Share the paired draws with the water system and ask whether the service line or upstream supply could be contributing lead. Resample the pair before changing plumbing.',
+      actionEs: 'Comparta las extracciones pareadas con el sistema de agua y pregunte si la línea de servicio o el suministro aguas arriba podrían aportar plomo. Vuelva a muestrear el par antes de cambiar plomería.',
+    };
+  }
+  if (firstValue > flushedValue && firstAt && share <= 0.5) {
+    if (flushedAt) {
+      return {
+        id: 'lead-local-shared', tone: 'caution',
+        title: 'Lead points near the tap and beyond it',
+        titleEs: 'El plomo apunta cerca del grifo y también más allá',
+        evidence: `Lead falls from ${firstText} ppb in the first draw at ${firstTap} to ${flushedText} ppb in the flushed draw at ${flushedTap}, ${dropPercent}% lower. That large drop points strongly to plumbing near the tap or fixture, while the flushed draw remains at or above 10 ppb, so upstream or shared plumbing or corrosive water can also be contributing.`,
+        evidenceEs: `El plomo baja de ${esDecimal(firstText)} ppb en la primera extracción en ${firstTap} a ${esDecimal(flushedText)} ppb en la extracción de purga en ${flushedTap}, un ${dropPercent}% menos. Esa caída grande apunta fuertemente a la plomería cercana al grifo o al accesorio, mientras que la extracción de purga sigue en 10 ppb o por encima, así que la plomería aguas arriba o compartida o el agua corrosiva también pueden estar aportando.`,
+        action: 'Share the pair with the water system, check the faucet and nearby fixture plumbing, and ask about service lines, shared plumbing, and corrosion control. Resample the pair before changing plumbing.',
+        actionEs: 'Comparta el par con el sistema de agua, revise el grifo y la plomería cercana del accesorio, y pregunte sobre líneas de servicio, plomería compartida y control de corrosión. Vuelva a muestrear el par antes de cambiar plomería.',
+      };
+    }
+    return {
+      id: 'lead-local', tone: 'caution',
+      title: 'Lead points to plumbing near this tap',
+      titleEs: 'El plomo apunta a la plomería cerca de este grifo',
+      evidence: `Lead falls from ${firstText} ppb in the first draw at ${firstTap} to ${flushedText} ppb in the flushed draw at ${flushedTap}, ${dropPercent}% lower. The first draw is higher than the flushed draw, which points strongly to plumbing near the tap or fixture. Lead carried in by the source water would show up in both paired draws.`,
+      evidenceEs: `El plomo baja de ${esDecimal(firstText)} ppb en la primera extracción en ${firstTap} a ${esDecimal(flushedText)} ppb en la extracción de purga en ${flushedTap}, un ${dropPercent}% menos. La primera extracción es más alta que la purga, lo que apunta fuertemente a la plomería cercana al grifo o al accesorio. El plomo traído por el agua de origen aparecería en ambas extracciones pareadas.`,
+      action: 'Share the pair with the water system, check faucets, fixtures, and the service line, and resample. Flushing can lower lead but cannot guarantee it is gone.',
+      actionEs: 'Comparta el par con el sistema de agua, revise grifos, accesorios y la línea de servicio, y vuelva a muestrear. Dejar correr el agua puede reducir el plomo, pero no garantiza que desaparezca.',
+    };
+  }
+  if (firstAt && !flushedAt) {
+    return {
+      id: 'lead-drops-below', tone: 'caution',
+      title: 'Flushed draw drops below the lead benchmark',
+      titleEs: 'La extracción de purga baja del nivel de referencia de plomo',
+      evidence: `Lead is ${firstText} ppb in the first draw at ${firstTap}, at or above the 10 ppb benchmark, but the flushed draw at ${flushedTap} is ${flushedText} ppb, below the benchmark. The flushed sample dropped below the benchmark, so the pair does not show lead staying high across both draws.`,
+      evidenceEs: `El plomo es ${esDecimal(firstText)} ppb en la primera extracción en ${firstTap}, en el nivel de referencia de 10 ppb o por encima de él, pero la extracción de purga en ${flushedTap} es ${esDecimal(flushedText)} ppb, por debajo del nivel de referencia. La muestra de purga bajó por debajo del nivel de referencia, así que el par no muestra plomo alto en ambas extracciones.`,
+      action: 'Share the pair with the water system and resample before treating one lower flushed result as a clearance. Flushing can lower lead but cannot guarantee it is gone.',
+      actionEs: 'Comparta el par con el sistema de agua y vuelva a muestrear antes de tomar un resultado más bajo de purga como un visto bueno. Dejar correr el agua puede reducir el plomo, pero no garantiza que desaparezca.',
+    };
+  }
+  if (firstAt && flushedAt) {
+    return {
+      id: 'lead-shared', tone: 'caution',
+      title: 'Lead stays high across the paired draws',
+      titleEs: 'El plomo sigue alto en las extracciones pareadas',
+      evidence: `Lead is ${firstText} ppb in the first draw at ${firstTap} and ${flushedText} ppb in the flushed draw at ${flushedTap} (${sharePercent}% of the first draw). Both draws are at or above 10 ppb, so one fixture is unlikely to explain the pair. Shared plumbing or corrosive water fits better.`,
+      evidenceEs: `El plomo es ${esDecimal(firstText)} ppb en la primera extracción en ${firstTap} y ${esDecimal(flushedText)} ppb en la extracción de purga en ${flushedTap} (${sharePercent}% de la primera extracción). Ambas extracciones están en 10 ppb o por encima, por lo que un solo accesorio difícilmente explica el par. Una plomería compartida o agua corrosiva concuerda mejor.`,
+      action: 'Ask the water system about lead service lines and corrosion control, and resample a first-draw and flushed pair.',
+      actionEs: 'Pregunte al sistema de agua sobre líneas de servicio de plomo y control de corrosión, y vuelva a muestrear un par de primera extracción y purga.',
+    };
+  }
+  return null;
+}
+
 function mixtureWording(mix) {
-  const quantified = mix.terms.filter(term => term.quantified && term.quotient !== null && Number(term.quotient) > 0);
+  const classification = classifyPfasMixture(mix);
+  const quantified = classification.quantifiedTerms;
   const qnames = quantified.map(term => PFAS_NAMES[term.id]);
   const missingNames = mix.missing.map(id => PFAS_NAMES[id]);
   const partialEn = mix.partial
@@ -141,29 +224,37 @@ function mixtureWording(mix) {
   const partialEs = mix.partial
     ? ` ${listEs(missingNames)} no ${missingNames.length === 1 ? 'está reportado' : 'están reportados'}, así que esta es una suma parcial y una cota inferior.`
     : '';
-  if (mix.epaMixture) {
+  if (classification.kind === 'multi-compound') {
     return {
       title: mix.partial ? 'Quantified PFAS mixture already passes the lower-bound screen' : 'Quantified PFAS mixture passes the Hazard Index screen',
       titleEs: mix.partial ? 'Una mezcla cuantificada de PFAS ya supera la evaluación de cota inferior' : 'Una mezcla cuantificada de PFAS supera la evaluación del Índice de Peligro',
-      evidence: `${listEn(qnames)} are at or above their practical quantitation levels. The multi-constituent Hazard Index is ${mix.raw}, above 1.${partialEn}`,
-      evidenceEs: `${listEs(qnames)} están en sus niveles prácticos de cuantificación o por encima de ellos. El Índice de Peligro multiconstituyente es ${esDecimal(mix.raw)}, superior a 1.${partialEs}`,
+      evidence: `${listEn(qnames)} are at or above their practical quantitation levels. The multi-constituent Hazard Index is ${mix.raw}, above 1. This is a ${classification.text.en} under EPA's multi-constituent mixture benchmark.${partialEn}`,
+      evidenceEs: `${listEs(qnames)} están en sus niveles prácticos de cuantificación o por encima de ellos. El Índice de Peligro multiconstituyente es ${esDecimal(mix.raw)}, superior a 1. Esta es una ${classification.text.es} según el nivel multiconstituyente de la EPA.${partialEs}`,
     };
   }
-  if (quantified.length === 0) {
+  if (classification.kind === 'below-quantitation') {
     return {
       title: mix.partial ? 'Partial below-quantitation PFAS sum passes the screen' : 'Below-quantitation PFAS sum passes the screen',
       titleEs: mix.partial ? 'Una suma parcial de PFAS por debajo del nivel de cuantificación supera la evaluación' : 'Una suma de PFAS por debajo del nivel de cuantificación supera la evaluación',
-      evidence: `None of the reported mixture constituents reached their EPA practical quantitation levels. The screening sum is ${mix.raw}, above 1, so it is a below-quantitation screening signal only, not EPA's multi-constituent Hazard Index mixture.${partialEn}`,
-      evidenceEs: `Ninguno de los constituyentes reportados de la mezcla alcanzó sus niveles prácticos de cuantificación de la EPA. La suma de evaluación es ${esDecimal(mix.raw)}, superior a 1, así que es solo una señal de evaluación por debajo del nivel de cuantificación, no la mezcla multiconstituyente del Índice de Peligro de la EPA.${partialEs}`,
+      evidence: `None of the reported mixture constituents reached their EPA practical quantitation levels. The screening sum is ${mix.raw}, above 1, so it is a ${classification.text.en} only, not EPA's multi-constituent Hazard Index mixture.${partialEn}`,
+      evidenceEs: `Ninguno de los constituyentes reportados de la mezcla alcanzó sus niveles prácticos de cuantificación de la EPA. La suma de evaluación es ${esDecimal(mix.raw)}, superior a 1, así que es solo una ${classification.text.es}, no la mezcla multiconstituyente del Índice de Peligro de la EPA.${partialEs}`,
     };
   }
-  const driver = quantified[0];
+  const driver = classification.driver;
   const driverName = PFAS_NAMES[driver.id];
+  if (classification.kind === 'combined') {
+    return {
+      title: mix.partial ? 'Partial combined PFAS sum passes the screen' : 'Combined PFAS terms pass the screening sum',
+      titleEs: mix.partial ? 'Una suma parcial combinada de PFAS supera la evaluación' : 'Términos combinados de PFAS superan la suma de evaluación',
+      evidence: `${driverName} is the only mixture constituent at or above its practical quantitation level, but its own quotient is ${driver.quotient}, below 1. The reported screening sum is ${mix.raw}, above 1 because the other reported below-quantitation terms add the rest. This is a ${classification.text.en}, not EPA's multi-constituent Hazard Index mixture.${partialEn}`,
+      evidenceEs: `${driverName} es el único constituyente de la mezcla en su nivel práctico de cuantificación o por encima de él, pero su propia proporción es ${esDecimal(driver.quotient)}, inferior a 1. La suma de evaluación reportada es ${esDecimal(mix.raw)}, superior a 1 porque los demás términos reportados por debajo del nivel de cuantificación aportan el resto. Esta es una ${classification.text.es}, no la mezcla multiconstituyente del Índice de Peligro de la EPA.${partialEs}`,
+    };
+  }
   return {
     title: mix.partial ? 'Partial PFAS sum passes the screen' : 'One PFAS drives the screening sum',
     titleEs: mix.partial ? 'Una suma parcial de PFAS supera la evaluación' : 'Un solo PFAS impulsa la suma de evaluación',
-    evidence: `${driverName} is the only mixture constituent at or above its practical quantitation level. The reported screening sum is ${mix.raw}, above 1. This is a single-compound screening signal, not EPA's multi-constituent Hazard Index mixture.${partialEn}`,
-    evidenceEs: `${driverName} es el único constituyente de la mezcla en su nivel práctico de cuantificación o por encima de él. La suma de evaluación reportada es ${esDecimal(mix.raw)}, superior a 1. Esta es una señal de evaluación de un solo compuesto, no la mezcla multiconstituyente del Índice de Peligro de la EPA.${partialEs}`,
+    evidence: `${driverName} is the only mixture constituent at or above its practical quantitation level, and its own quotient is ${driver.quotient}, at or above 1. The reported screening sum is ${mix.raw}, above 1. This is a ${classification.text.en}, not EPA's multi-constituent Hazard Index mixture.${partialEn}`,
+    evidenceEs: `${driverName} es el único constituyente de la mezcla en su nivel práctico de cuantificación o por encima de él, y su propia proporción es ${esDecimal(driver.quotient)}, en 1 o por encima. La suma de evaluación reportada es ${esDecimal(mix.raw)}, superior a 1. Esta es una ${classification.text.es}, no la mezcla multiconstituyente del Índice de Peligro de la EPA.${partialEs}`,
   };
 }
 
@@ -244,99 +335,38 @@ export function diagnose({ samples, screens, active = 0 }) {
   }
 
   const lead = resultFor(screen, 'lead');
-  if (lead && FLAGGED.has(lead.status)) {
-    const here = Number(lead.value);
-    const paired = pairedLeadRows(samples, sample, active);
-    if (paired.length) {
-      const low = paired.reduce((best, item) =>
+  const leadPair = leadPairContext(samples, sample, active);
+  if (leadPair) {
+    const pairFinding = leadPairFinding(leadPair);
+    if (pairFinding) add({ ...pairFinding, cite: SOURCE_HINTS.lead });
+  } else if (lead && FLAGGED.has(lead.status)) {
+    const others = samples
+      .map((other, index) => ({ other, index }))
+      .filter(({ other, index }) => index !== active && other.values?.lead != null);
+    if (others.length) {
+      const low = others.reduce((best, item) =>
         (Number(item.other.values.lead) < Number(best.other.values.lead) ? item : best));
-      const lowValue = Number(low.other.values.lead);
-      const activeIsFirst = sample.drawType === 'first-draw';
-      const first = activeIsFirst
-        ? { value: here, text: lead.value }
-        : { value: lowValue, text: low.other.values.lead };
-      const flushed = activeIsFirst
-        ? { value: lowValue, text: low.other.values.lead }
-        : { value: here, text: lead.value };
-      const firstAt = leadAtOrAbove(first.text);
-      const flushedAt = leadAtOrAbove(flushed.text);
-      const pairShare = first.value > 0 ? flushed.value / first.value : 1;
-      if (flushed.value > first.value) {
-        add({
-          id: 'lead-rises', tone: 'caution',
-          title: 'Lead rises in the flushed draw',
-          titleEs: 'El plomo aumenta en la extracción de purga',
-          evidence: `Lead is ${flushed.text} ppb in the flushed draw after ${first.text} ppb in the first draw. The flushed draw rose above the first draw, pointing away from fixture-only stagnation and toward upstream supply or the service line.`,
-          evidenceEs: `El plomo es ${esDecimal(flushed.text)} ppb en la extracción de purga después de ${esDecimal(first.text)} ppb en la primera extracción. La extracción de purga aumentó por encima de la primera extracción, lo que no concuerda con un estancamiento limitado al grifo y apunta al suministro aguas arriba o la línea de servicio.`,
-          action: 'Share the paired draws with the water system and ask whether the service line or upstream supply could be contributing lead. Resample the pair before changing plumbing.',
-          actionEs: 'Comparta las extracciones pareadas con el sistema de agua y pregunte si la línea de servicio o el suministro aguas arriba podrían aportar plomo. Vuelva a muestrear el par antes de cambiar plomería.',
-          cite: SOURCE_HINTS.lead,
-        });
-      } else if (activeIsFirst && first.value > flushed.value && firstAt && pairShare <= 0.5) {
-        const share = here > 0 ? lowValue / here : 1;
-        add({
-          id: 'lead-local', tone: 'caution',
-          title: 'Lead points to plumbing near this tap',
-          titleEs: 'El plomo apunta a la plomería cerca de este grifo',
-          evidence: `Lead is ${lead.value} ppb in this ${sample.drawType} row but ${low.other.values.lead} ppb in its paired ${low.other.drawType} row at ${low.other.tap}, ${Math.round((1 - share) * 100)}% lower. The first draw is higher than the flushed draw. Lead carried in by the source water would show up in both paired draws.`,
-          evidenceEs: `El plomo es ${esDecimal(lead.value)} ppb en esta fila de ${sample.drawType === 'first-draw' ? 'primera extracción' : 'purga'}, pero ${esDecimal(low.other.values.lead)} ppb en su fila pareada de ${low.other.drawType === 'first-draw' ? 'primera extracción' : 'purga'} en ${low.other.tap}, un ${Math.round((1 - share) * 100)}% menos. La primera extracción es más alta que la purga. El plomo traído por el agua de origen aparecería en ambas extracciones pareadas.`,
-          action: 'Share the pair with the water system, check faucets, fixtures, and the service line, and resample. Flushing can lower lead but cannot guarantee it is gone.',
-          actionEs: 'Comparta el par con el sistema de agua, revise grifos, accesorios y la línea de servicio, y vuelva a muestrear. Dejar correr el agua puede reducir el plomo, pero no garantiza que desaparezca.',
-          cite: SOURCE_HINTS.lead,
-        });
-      } else if (firstAt && !flushedAt) {
-        add({
-          id: 'lead-drops-below', tone: 'caution',
-          title: 'Flushed draw drops below the lead benchmark',
-          titleEs: 'La extracción de purga baja del nivel de referencia de plomo',
-          evidence: `Lead is ${first.text} ppb in the first draw, at or above the 10 ppb benchmark, but the flushed sample is ${flushed.text} ppb, below the benchmark. The flushed sample dropped below the benchmark, so the pair does not show lead staying high across both draws.`,
-          evidenceEs: `El plomo es ${esDecimal(first.text)} ppb en la primera extracción, en el nivel de referencia de 10 ppb o por encima de él, pero la muestra de purga es ${esDecimal(flushed.text)} ppb, por debajo del nivel de referencia. La muestra de purga bajó por debajo del nivel de referencia, así que el par no muestra plomo alto en ambas extracciones.`,
-          action: 'Share the pair with the water system and resample before treating one lower flushed result as a clearance. Flushing can lower lead but cannot guarantee it is gone.',
-          actionEs: 'Comparta el par con el sistema de agua y vuelva a muestrear antes de tomar un resultado más bajo de purga como un visto bueno. Dejar correr el agua puede reducir el plomo, pero no garantiza que desaparezca.',
-          cite: SOURCE_HINTS.lead,
-        });
-      } else if (firstAt && flushedAt) {
-        const share = here > 0 ? lowValue / here : 1;
-        add({
-          id: 'lead-shared', tone: 'caution',
-          title: 'Lead stays high across the paired draws',
-          titleEs: 'El plomo sigue alto en las extracciones pareadas',
-          evidence: `The paired ${low.other.drawType} row, ${low.other.tap}, still reads ${low.other.values.lead} ppb (${Math.round(share * 100)}% of this tap), so one fixture is unlikely to explain it. Shared plumbing or corrosive water fits better.`,
-          evidenceEs: `La fila pareada de ${low.other.drawType === 'first-draw' ? 'primera extracción' : 'purga'}, ${low.other.tap}, aún marca ${esDecimal(low.other.values.lead)} ppb (${Math.round(share * 100)}% de este grifo), por lo que un solo accesorio difícilmente lo explica. Una plomería compartida o agua corrosiva concuerda mejor.`,
-          action: 'Ask the water system about lead service lines and corrosion control, and resample a first-draw and flushed pair.',
-          actionEs: 'Pregunte al sistema de agua sobre líneas de servicio de plomo y control de corrosión, y vuelva a muestrear un par de primera extracción y purga.',
-          cite: SOURCE_HINTS.lead,
-        });
-      }
+      add({
+        id: 'lead-contrast', tone: 'caution',
+        title: 'Lead contrast cannot be tied to plumbing',
+        titleEs: 'El contraste de plomo no puede vincularse a la plomería',
+        evidence: `Lead is ${lead.value} ppb here. Another row, ${low.other.tap}, reads ${low.other.values.lead} ppb, but the rows do not carry matching first-draw and flushed pair metadata, so the contrast cannot separate local plumbing from source water.`,
+        evidenceEs: `El plomo es ${esDecimal(lead.value)} ppb aquí. Otra fila, ${low.other.tap}, marca ${esDecimal(low.other.values.lead)} ppb, pero las filas no tienen metadatos pareados coincidentes de primera extracción y purga, así que el contraste no puede separar la plomería local del agua de origen.`,
+        action: 'Collect a first-draw and flushed pair from this tap, or add matching pair_id and draw_type values before using the contrast.',
+        actionEs: 'Recolecte un par de primera extracción y purga de este grifo, o agregue valores coincidentes de pair_id y draw_type antes de usar el contraste.',
+        cite: SOURCE_HINTS.lead,
+      });
     } else {
-      const others = samples
-        .map((other, index) => ({ other, index }))
-        .filter(({ other, index }) => index !== active && other.values?.lead != null);
-      if (others.length) {
-        const low = others.reduce((best, item) =>
-          (Number(item.other.values.lead) < Number(best.other.values.lead) ? item : best));
-        add({
-          id: 'lead-contrast', tone: 'caution',
-          title: 'Lead contrast cannot be tied to plumbing',
-          titleEs: 'El contraste de plomo no puede vincularse a la plomería',
-          evidence: `Lead is ${lead.value} ppb here. Another row, ${low.other.tap}, reads ${low.other.values.lead} ppb, but the rows do not carry matching first-draw and flushed pair metadata, so the contrast cannot separate local plumbing from source water.`,
-          evidenceEs: `El plomo es ${esDecimal(lead.value)} ppb aquí. Otra fila, ${low.other.tap}, marca ${esDecimal(low.other.values.lead)} ppb, pero las filas no tienen metadatos pareados coincidentes de primera extracción y purga, así que el contraste no puede separar la plomería local del agua de origen.`,
-          action: 'Collect a first-draw and flushed pair from this tap, or add matching pair_id and draw_type values before using the contrast.',
-          actionEs: 'Recolecte un par de primera extracción y purga de este grifo, o agregue valores coincidentes de pair_id y draw_type antes de usar el contraste.',
-          cite: SOURCE_HINTS.lead,
-        });
-      } else {
-        add({
-          id: 'lead-unpaired', tone: 'caution',
-          title: 'Lead at or above the 10 ppb action level',
-          titleEs: 'Plomo en el nivel de acción de 10 ppb o por encima de él',
-          evidence: `Lead is ${lead.value} ppb, ${sig3(benchmarkRatio(lead))}x the action level. Without a paired draw, plumbing and source water cannot be told apart.`,
-          evidenceEs: `El plomo es ${esDecimal(lead.value)} ppb, ${sig3Es(benchmarkRatio(lead))} veces el nivel de acción. Sin una extracción pareada, no se pueden distinguir la plomería y el agua de origen.`,
-          action: 'Collect a first-draw and a flushed sample from this tap to separate plumbing from source water.',
-          actionEs: 'Recolecte una muestra de primera extracción y una de purga de este grifo para separar la plomería del agua de origen.',
-          cite: SOURCE_HINTS.lead,
-        });
-      }
+      add({
+        id: 'lead-unpaired', tone: 'caution',
+        title: 'Lead at or above the 10 ppb action level',
+        titleEs: 'Plomo en el nivel de acción de 10 ppb o por encima de él',
+        evidence: `Lead is ${lead.value} ppb, ${sig3(benchmarkRatio(lead))}x the action level. Without a paired draw, plumbing and source water cannot be told apart.`,
+        evidenceEs: `El plomo es ${esDecimal(lead.value)} ppb, ${sig3Es(benchmarkRatio(lead))} veces el nivel de acción. Sin una extracción pareada, no se pueden distinguir la plomería y el agua de origen.`,
+        action: 'Collect a first-draw and a flushed sample from this tap to separate plumbing from source water.',
+        actionEs: 'Recolecte una muestra de primera extracción y una de purga de este grifo para separar la plomería del agua de origen.',
+        cite: SOURCE_HINTS.lead,
+      });
     }
   }
 

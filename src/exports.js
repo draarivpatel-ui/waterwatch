@@ -1,4 +1,5 @@
 import { normalizeSample, screenSample } from './engine.js';
+import { classifyPfasMixture } from './pfas-signal.js';
 import { sha256Hex } from './sha256.js';
 
 export const RULESET = 'epa-2024-sample-screen-v1';
@@ -83,10 +84,7 @@ function auditSource(source) {
 }
 
 function mixtureAuditLabel(hi) {
-  if (hi.epaMixture) return 'PFAS mixture Hazard Index';
-  if (hi.quantified === 1) return 'PFAS single-compound screening signal';
-  if (hi.raw !== null) return 'PFAS below-quantitation screening sum';
-  return 'PFAS incomplete screening sum';
+  return classifyPfasMixture(hi).text.csv;
 }
 
 export function auditCsv(samples, { source = 'unverified-input' } = {}) {

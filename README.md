@@ -36,7 +36,7 @@ these files locally to run without internet.
 npm test
 ```
 
-Node 18 or newer, no packages to install. The suite has 743 tests, 328 of
+Node 18 or newer, no packages to install. The suite has 758 tests, 328 of
 them covering the two lab modules and 42 covering the source diagnostic,
 alongside the 32 deterministic self-tests the page itself runs.
 
