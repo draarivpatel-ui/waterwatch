@@ -4,11 +4,11 @@
 import { spawn, execFile } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile, writeFile, rm, readdir } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { join, extname, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { createScratchDir, isCreatedScratchDir } from './scratch-dir.mjs';
+import { createScratchDir, isCreatedScratchDir, verifyCreatedScratchDir } from './scratch-dir.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -36,13 +36,30 @@ const check = (name, ok, detail = '') => {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+function pathPresent(target) {
+  try {
+    lstatSync(target);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
 async function removeCreatedScratchDir(target) {
   if (!isCreatedScratchDir(target)) return;
+  let lastError;
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    await rm(target, { recursive: true, force: true }).catch(() => {});
-    if (!existsSync(target)) return;
+    verifyCreatedScratchDir(target);
+    try {
+      await rm(target, { recursive: true, force: true });
+    } catch (error) {
+      lastError = error;
+    }
+    if (!pathPresent(target)) return;
     await sleep(100);
   }
+  throw new Error(`failed to remove created scratch directory ${target}${lastError ? `: ${lastError.message}` : ''}`);
 }
 
 /* ---------- static server ---------- */
@@ -69,7 +86,15 @@ let chrome;
 let ws;
 let profile;
 let dlDir;
+let artifactDir;
 let exitCode = 0;
+const updateArtifacts = process.argv.slice(2).includes('--update-artifacts');
+
+function artifactPath(name) {
+  if (updateArtifacts) return join(ROOT, 'docs', name);
+  if (!artifactDir) artifactDir = createScratchDir('waterwatch-smoke-artifacts-');
+  return join(artifactDir, name);
+}
 
 try {
   profile = createScratchDir('waterwatch-smoke-profile-', process.env.WW_CHROME_USER_DATA_DIR);
@@ -401,7 +426,7 @@ try {
     await evaluate('window.scrollTo(0,0)');
     const shot = await cmd('Page.captureScreenshot', { format: 'png' });
     const png = Buffer.from(shot.data, 'base64');
-    await writeFile(join(ROOT, 'docs', 'desktop.png'), png);
+    await writeFile(artifactPath('desktop.png'), png);
     const ds = pngSize(png);
     check('desktop screenshot 1280x800', ds.width === 1280 && ds.height === 800, `${ds.width}x${ds.height}`);
 
@@ -431,7 +456,7 @@ try {
     await evaluate('window.scrollTo(0,0)');
     const mshot = await cmd('Page.captureScreenshot', { format: 'png' });
     const mpng = Buffer.from(mshot.data, 'base64');
-    await writeFile(join(ROOT, 'docs', 'advisory.png'), mpng);
+    await writeFile(artifactPath('advisory.png'), mpng);
     const ms = pngSize(mpng);
     check('mobile screenshot 390x844', ms.width === 390 && ms.height === 844, `${ms.width}x${ms.height}`);
 
@@ -708,8 +733,15 @@ Crowded flushed,boil,present,12,20,crowded,flushed`;
     ]);
   }
   try { server.close(); } catch { /* not listening */ }
-  await removeCreatedScratchDir(profile);
-  await removeCreatedScratchDir(dlDir);
+  const cleanupErrors = [];
+  for (const target of [artifactDir, profile, dlDir]) {
+    try {
+      await removeCreatedScratchDir(target);
+    } catch (error) {
+      cleanupErrors.push(`${target}: ${error.message}`);
+    }
+  }
+  if (cleanupErrors.length > 0) check('scratch cleanup completed', false, cleanupErrors.join(' | '));
 }
 
 const failed = results.filter(r => !r.ok);

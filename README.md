@@ -36,9 +36,9 @@ these files locally to run without internet.
 npm test
 ```
 
-Node 18 or newer, no packages to install. The suite has 769 tests:
+Node 18 or newer, no packages to install. The suite has 773 tests:
 diagnostic 52, engine 222, exports 57, hygiene 3, import 73, mixture-lab 178,
-pfas-signal 7, SDG 6 equity 151, script-safety 7, shortcuts 19; lab modules 329; page self-tests 32.
+pfas-signal 7, SDG 6 equity 151, script-safety 11, shortcuts 19; lab modules 329; page self-tests 32.
 
 ## What it does and does not claim
 
@@ -128,7 +128,8 @@ optional paired-draw provenance columns; `draw_type` is `first-draw`,
 - `test/`: node:test suites for the parser, shortcuts, engine, exports,
   hygiene, the source diagnostic, and both lab modules.
 - `scripts/browser-smoke.mjs`: headless-Chrome smoke run that captures the
-  screenshots in `docs/`.
+  screenshots in scratch by default and refreshes the `docs/` images with
+  `--update-artifacts`.
 - `scripts/sdg6-audit.mjs`: headless-Chrome audit of the SDG 6 lab: real
   pointer and keyboard input, `#ww=` reload-restore, and a routed JSON
   download.

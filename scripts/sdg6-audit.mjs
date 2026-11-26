@@ -6,10 +6,10 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile, rm, readdir } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { join, extname, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createScratchDir, isCreatedScratchDir } from './scratch-dir.mjs';
+import { createScratchDir, isCreatedScratchDir, verifyCreatedScratchDir } from './scratch-dir.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -30,13 +30,45 @@ const check = (name, ok, detail = '') => {
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+function pathPresent(target) {
+  try {
+    lstatSync(target);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
 async function removeCreatedScratchDir(target) {
   if (!isCreatedScratchDir(target)) return;
+  let lastError;
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    await rm(target, { recursive: true, force: true }).catch(() => {});
-    if (!existsSync(target)) return;
+    verifyCreatedScratchDir(target);
+    try {
+      await rm(target, { recursive: true, force: true });
+    } catch (error) {
+      lastError = error;
+    }
+    if (!pathPresent(target)) return;
     await sleep(100);
   }
+  throw new Error(`failed to remove created scratch directory ${target}${lastError ? `: ${lastError.message}` : ''}`);
+}
+
+async function fetchJsonWithRetry(url, attempts = 8) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt + 1 < attempts) await sleep(Math.min(150 * (2 ** attempt), 1200));
+  }
+  throw new Error(`Chrome DevTools endpoint did not become ready: ${url}: ${lastError?.message ?? 'unknown error'}`);
 }
 
 const server = createServer(async (req, res) => {
@@ -72,7 +104,8 @@ try {
   for (let i = 0; i < 100 && !existsSync(portFile); i += 1) await sleep(150);
   if (!existsSync(portFile)) throw new Error('Chrome did not open DevTools');
   const [wsPort, wsPath] = readFileSync(portFile, 'utf8').trim().split('\n');
-  const version = await (await fetch(`http://127.0.0.1:${wsPort}/json/version`)).json();
+  await fetchJsonWithRetry(`http://127.0.0.1:${wsPort}/json/list`);
+  const version = await fetchJsonWithRetry(`http://127.0.0.1:${wsPort}/json/version`);
   ws = new WebSocket(version.webSocketDebuggerUrl ?? `ws://127.0.0.1:${wsPort}${wsPath}`);
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
 
@@ -284,8 +317,15 @@ try {
     await Promise.race([new Promise(r => chrome.once('exit', r)), sleep(5000)]);
   }
   try { server.close(); } catch { /* not listening */ }
-  await removeCreatedScratchDir(profile);
-  await removeCreatedScratchDir(dlDir);
+  const cleanupErrors = [];
+  for (const target of [profile, dlDir]) {
+    try {
+      await removeCreatedScratchDir(target);
+    } catch (error) {
+      cleanupErrors.push(`${target}: ${error.message}`);
+    }
+  }
+  if (cleanupErrors.length > 0) check('scratch cleanup completed', false, cleanupErrors.join(' | '));
 }
 
 const failed = results.filter(r => !r.ok);

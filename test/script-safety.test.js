@@ -6,14 +6,17 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createScratchDir, isCreatedScratchDir } from '../scripts/scratch-dir.mjs';
+import { createScratchDir, isCreatedScratchDir, verifyCreatedScratchDir } from '../scripts/scratch-dir.mjs';
+import { parseTapSummary, suiteCountProblems } from '../scripts/verify-test-counts.mjs';
 
 const REAL_TMP = realpathSync(os.tmpdir());
 
@@ -88,6 +91,24 @@ test('a symlink ancestor escaping the allowed scratch roots is refused', () => {
   }
 });
 
+test('a symlinked override parent inside the allowed root is refused', () => {
+  const fixture = scratchFixture();
+  try {
+    const realParent = path.join(fixture.allowedRoot, 'real-parent');
+    const inner = path.join(realParent, 'inner');
+    mkdirSync(realParent);
+    mkdirSync(inner);
+    const link = path.join(fixture.allowedRoot, 'linked-real-parent');
+    symlinkSync(realParent, link, 'dir');
+    assert.throws(
+      () => createScratchDir('waterwatch-smoke-profile-', path.join(link, 'inner', 'new-profile'), fixture.options),
+      /non-canonical scratch parent/);
+    assert.equal(readdirSync(inner).length, 0);
+  } finally {
+    removeFixture(fixture.container);
+  }
+});
+
 test('missing override paths create only fresh mkdtemp directories', () => {
   const fixture = scratchFixture();
   try {
@@ -127,6 +148,23 @@ test('default scratch paths are unique inside an explicitly allowed root', () =>
   }
 });
 
+test('a symlinked scratch root ancestor is rejected', () => {
+  const fixture = scratchFixture();
+  try {
+    const realParent = path.join(fixture.allowedRoot, 'real-root-parent');
+    const realRoot = path.join(realParent, 'root');
+    mkdirSync(realParent);
+    mkdirSync(realRoot);
+    const link = path.join(fixture.allowedRoot, 'linked-root-parent');
+    symlinkSync(realParent, link, 'dir');
+    assert.throws(
+      () => createScratchDir('waterwatch-smoke-', undefined, { allowedRoots: [path.join(link, 'root')] }),
+      /non-canonical scratch root/);
+  } finally {
+    removeFixture(fixture.container);
+  }
+});
+
 test('symlink scratch root candidates are rejected', () => {
   const fixture = scratchFixture();
   try {
@@ -146,4 +184,54 @@ test('scratch root candidates escaping approved temporary roots are rejected', (
   assert.throws(
     () => createScratchDir('waterwatch-smoke-', undefined, { allowedRoots: ['/'] }),
     /scratch root outside temporary scratch space/);
+});
+
+test('created scratch identity rejects a replaced directory before cleanup', () => {
+  const fixture = scratchFixture();
+  try {
+    const created = createScratchDir('waterwatch-smoke-', undefined, fixture.options);
+    assert.equal(verifyCreatedScratchDir(created), true);
+    const replacement = path.join(fixture.allowedRoot, 'replacement');
+    mkdirSync(replacement);
+    rmSync(created, { recursive: true, force: true });
+    renameSync(replacement, created);
+    assert.throws(() => verifyCreatedScratchDir(created), /replaced before cleanup/);
+  } finally {
+    removeFixture(fixture.container);
+  }
+});
+
+test('injected TAP summary lines cannot hide a skipped test', () => {
+  const output = [
+    'TAP version 13',
+    '# pass 2',
+    '# skipped 0',
+    '# Subtest: noisy stdout',
+    'ok 1 - noisy stdout',
+    '  ---',
+    '  duration_ms: 1',
+    '  ...',
+    '# Subtest: actually skipped',
+    'ok 2 - actually skipped # SKIP',
+    '  ---',
+    '  duration_ms: 0',
+    '  ...',
+    '1..2',
+    '# tests 2',
+    '# suites 0',
+    '# pass 1',
+    '# fail 0',
+    '# cancelled 0',
+    '# skipped 1',
+    '# todo 0',
+    '# duration_ms 12.5',
+    '',
+  ].join('\n');
+  const summary = parseTapSummary(output, 'injected stdout');
+  assert.equal(summary.tests, 2);
+  assert.equal(summary.pass, 1);
+  assert.equal(summary.skipped, 1);
+  const problems = suiteCountProblems({ ...summary, code: 0 });
+  assert.ok(problems.includes('pass 1 does not equal tests 2'));
+  assert.ok(problems.includes('skipped 1 is not zero'));
 });
